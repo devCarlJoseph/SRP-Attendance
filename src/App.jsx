@@ -1,17 +1,5 @@
 import React, { useEffect, useState } from "react";
 
-// AttendanceTracker.jsx
-// Single-file React component (Tailwind CSS classes used)
-// Features:
-// - Add / remove students
-// - Select date and mark Present / Absent (and toggle)
-// - Persist data to localStorage
-// - View per-date attendance and per-student summary
-// - Export selected date as CSV
-// How to use:
-// - Drop this component into a React app that has Tailwind configured.
-// - Example: Create a new Vite + React project, install Tailwind, and render <AttendanceTracker /> in App.jsx.
-
 const STORAGE_KEY = "attendance_tracker_v1";
 
 function formatDateISO(d) {
@@ -143,15 +131,14 @@ export default function AttendanceTracker() {
   return (
     <div className="max-w-5xl mx-auto p-6">
       <header className="mb-6">
-        <h1 className="text-2xl font-bold mb-1">Attendance Tracker</h1>
-        <p className="text-sm text-gray-600">Simple, local-first attendance web app (persists to browser). Export CSV for records.</p>
+        <h1 className="text-2xl font-bold mb-1">SRP Attendance Tracker</h1>
       </header>
 
       <section className="bg-white rounded-lg shadow p-4 mb-6">
         <form onSubmit={addStudent} className="flex gap-2">
           <input
             className="flex-1 border rounded px-3 py-2"
-            placeholder="Add student name and press Enter"
+            placeholder="Add Altar Server name and press Enter"
             value={nameInput}
             onChange={(e) => setNameInput(e.target.value)}
           />
@@ -162,7 +149,7 @@ export default function AttendanceTracker() {
 
         <div className="mt-4 flex gap-2 flex-wrap">
           <button className="px-3 py-1 rounded border" onClick={() => setStudents([])} title="Remove all students">
-            Remove all students
+            Remove all
           </button>
           <button
             className="px-3 py-1 rounded border"
@@ -207,7 +194,7 @@ export default function AttendanceTracker() {
         </div>
 
         <div className="md:col-span-2 bg-white rounded-lg shadow p-4">
-          <h2 className="font-semibold mb-2">Students ({students.length})</h2>
+          <h2 className="font-semibold mb-2">Altar Servers ({students.length})</h2>
           <div className="overflow-auto">
             <table className="min-w-full text-left">
               <thead>
@@ -251,7 +238,7 @@ export default function AttendanceTracker() {
                 })}
                 {students.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="py-4 text-center text-gray-500">No students yet. Add one above or load sample.</td>
+                    <td colSpan={4} className="py-4 text-center text-gray-500">No Altar Servers yet. Add one above or load sample.</td>
                   </tr>
                 )}
               </tbody>
@@ -261,7 +248,7 @@ export default function AttendanceTracker() {
       </section>
 
       <footer className="text-sm text-gray-600 mt-6">
-        Local-only demo — data stored in your browser. For multi-user or server-backed attendance, integrate a backend API and authentication.
+        SAN ROQUE PARISH ALTAR SERVER ATTENDANCE TRACKER
       </footer>
     </div>
   );
