@@ -99,11 +99,11 @@ export default function AttendanceTracker() {
   });
 
   return (
-    <div className="h-screen flex justify-center items-center">
+    <div className="flex justify-center items-center">
       <div>
-        <div className="max-w-5xl mx-auto p-6 bg-[#07325c] rounded-[0.5rem]">
+        <div className="max-w-5xl mx-auto p-6">
           <header className="mb-6">
-            <h1 className="text-2xl font-bold mb-1 text-white">SRP Altar Servers Attendance</h1>
+            <h1 className="text-2xl font-bold mb-1 text-[#11a9f0]">SRP Altar Servers Attendance</h1>
           </header>
 
           <section className="bg-white rounded-lg shadow p-4 mb-6">
@@ -114,13 +114,13 @@ export default function AttendanceTracker() {
                 value={nameInput}
                 onChange={(e) => setNameInput(e.target.value)}
               />
-              <button className="px-4 py-2 rounded bg-blue-900 text-white cursor-pointer hover:bg-blue-700" onClick={addAltarServer}>
+              <button className="px-4 py-2 rounded bg-[#42aaff] text-white cursor-pointer hover:bg-blue-700" onClick={addAltarServer}>
                 Add
               </button>
             </form>
 
             <div className="mt-4 flex gap-2 flex-wrap">
-              <button className="px-3 py-1 rounded border cursor-pointer bg-blue-900 text-[white] hover:bg-blue-700" onClick={() => setAltarServers([])} title="Remove all altar servers">
+              <button className="px-3 py-1 rounded border cursor-pointer bg-[#42aaff] text-[white] hover:bg-blue-700" onClick={() => setAltarServers([])} title="Remove all altar servers">
                 Remove all
               </button>
             </div>
@@ -134,7 +134,7 @@ export default function AttendanceTracker() {
               <div className="mt-4 flex gap-2">
                 <button className="px-3 py-1 rounded border bg-[#30b017] text-white cursor-pointer hover:bg-[#48de2a]" onClick={() => markAll("present")}>Mark all Present</button>
                 <button className="px-3 py-1 rounded border bg-[#e63c3c] text-white cursor-pointer hover:bg-[#f56464]" onClick={() => markAll("absent")}>Mark all Absent</button>
-                <button className="px-3 py-1 rounded border bg-[#4f4d4a] text-white cursor-pointer hover:bg-[#787775]" onClick={clearDate}>Clear Date</button>
+                <button className="px-3 py-1 rounded bg-[#42aaff] text-white cursor-pointer hover:bg-blue-600" onClick={clearDate}>Clear Date</button>
               </div>
 
               <div className="mt-4">
@@ -155,9 +155,9 @@ export default function AttendanceTracker() {
                   <thead>
                     <tr className="border-b">
                       <th className="py-2">Name</th>
-                      <th className="py-2">Status ({date})</th>
-                      <th className="py-2">Summary</th>
-                      <th className="py-2">Actions</th>
+                      <th className="py-2 px-2">Date ({date})</th>
+                      <th className="py-2 px-2">Summary</th>
+                      <th className="py-2 px-2">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -166,7 +166,7 @@ export default function AttendanceTracker() {
                       return (
                         <tr key={s.id} className="border-b hover:bg-gray-50">
                           <td className="py-2 px-2">{s.name}</td>
-                          <td className="py-2">
+                          <td className="py-2 px-1">
                             <div className="inline-flex gap-2">
                               <button className={`px-2 py-1 rounded border hover:bg-green-100 cursor-pointer ${val === "present" ? "bg-green-100" : ""}`} onClick={() => setRecords((r) => ({ ...r, [date]: { ...(r[date] || {}), [s.id]: "present" } }))}>
                                 Present
@@ -187,8 +187,8 @@ export default function AttendanceTracker() {
                               );
                             })()}
                           </td>
-                          <td className="py-2">
-                            <button className="px-2 py-1 rounded border text-sm cursor-pointer bg-blue-900 text-white hover:bg-blue-600" onClick={() => removeAltarServer(s.id)}>Remove</button>
+                          <td className="py-2 px-2">
+                            <button className="px-2 py-1 rounded border text-sm cursor-pointer bg-[#42aaff] text-white hover:bg-blue-600" onClick={() => removeAltarServer(s.id)}>Remove</button>
                           </td>
                         </tr>
                       );
