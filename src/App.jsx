@@ -10,19 +10,18 @@ function formatDateISO(d) {
 }
 
 export default function AttendanceTracker() {
-  const [students, setStudents] = useState([]); // [{id, name}]
+  const [servers, setServers] = useState([]); 
   const [nameInput, setNameInput] = useState("");
   const [date, setDate] = useState(formatDateISO(new Date()));
-  const [records, setRecords] = useState({}); // {dateISO: {studentId: 'present'|'absent'}}
+  const [records, setRecords] = useState({});
   const [filter, setFilter] = useState("all");
 
-  // load from localStorage
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        setStudents(parsed.students || []);
+        setServers(parsed.servers || []);
         setRecords(parsed.records || {});
       }
     } catch (e) {
@@ -30,24 +29,22 @@ export default function AttendanceTracker() {
     }
   }, []);
 
-  // save to localStorage
   useEffect(() => {
-    const payload = { students, records };
+    const payload = { servers, records };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-  }, [students, records]);
+  }, [servers, records]);
 
-  const addStudent = (e) => {
+  const addServer = (e) => {
     e?.preventDefault();
     const trimmed = nameInput.trim();
     if (!trimmed) return;
     const id = Date.now().toString();
-    setStudents((s) => [...s, { id, name: trimmed }]);
+    setServers((s) => [...s, { id, name: trimmed }]);
     setNameInput("");
   };
 
-  const removeStudent = (id) => {
-    setStudents((s) => s.filter((x) => x.id !== id));
-    // also remove attendance entries for this student
+  const removeServer = (id) => {
+    setServers((s) => s.filter((x) => x.id !== id));
     setRecords((r) => {
       const copy = { ...r };
       for (const d of Object.keys(copy)) {
@@ -61,14 +58,13 @@ export default function AttendanceTracker() {
     });
   };
 
-  const toggleAttendance = (studentId) => {
+  const toggleAttendance = (serverId) => {
     setRecords((r) => {
       const forDate = { ...(r[date] || {}) };
-      const cur = forDate[studentId];
-      // cycle: undefined -> present -> absent -> undefined
+      const cur = forDate[serverId];
       const next = cur === "present" ? "absent" : cur === "absent" ? undefined : "present";
-      if (next === undefined) delete forDate[studentId];
-      else forDate[studentId] = next;
+      if (next === undefined) delete forDate[serverId];
+      else forDate[serverId] = next;
       return { ...r, [date]: forDate };
     });
   };
@@ -76,7 +72,7 @@ export default function AttendanceTracker() {
   const markAll = (status) => {
     setRecords((r) => {
       const row = {};
-      students.forEach((s) => (row[s.id] = status));
+      servers.forEach((s) => (row[s.id] = status));
       return { ...r, [date]: row };
     });
   };
@@ -90,8 +86,8 @@ export default function AttendanceTracker() {
   };
 
   const exportCSV = () => {
-    const header = ["Student Name", "Status", "Date"];
-    const rows = students.map((s) => {
+    const header = ["Server Name", "Status", "Date"];
+    const rows = servers.map((s) => {
       const status = (records[date] && records[date][s.id]) || "absent";
       return [s.name, status, date];
     });
@@ -107,63 +103,51 @@ export default function AttendanceTracker() {
     URL.revokeObjectURL(url);
   };
 
-  const attendanceSummaryForStudent = (studentId) => {
+  const attendanceSummaryForServer = (serverId) => {
     let present = 0,
       absent = 0,
+      late = 0,
       total = 0;
     for (const d of Object.keys(records)) {
-      const val = records[d][studentId];
+      const val = records[d][serverId];
       if (val === "present") present++;
       if (val === "absent") absent++;
-      if (val === "present" || val === "absent") total++;
+      if (val === "late") late++;
+      if (val === "present" || val === "absent" || val === "late") total++;
     }
-    return { present, absent, total };
+    return { present, absent, late, total };
   };
 
-  const filteredStudents = students.filter((s) => {
+  const filteredServers = servers.filter((s) => {
     if (filter === "all") return true;
     const val = records[date] && records[date][s.id];
     if (filter === "present") return val === "present";
-    if (filter === "absent") return val === "absent" || !val; // treat undefined as absent
+    if (filter === "absent") return val === "absent" || !val; 
     return true;
   });
 
   return (
     <div className="max-w-5xl mx-auto p-6">
       <header className="mb-6">
-        <h1 className="text-2xl font-bold mb-1">SRP Attendance Tracker</h1>
+        <h1 className="text-2xl font-bold mb-1">SRP Altar Servers Attendance</h1>
       </header>
 
       <section className="bg-white rounded-lg shadow p-4 mb-6">
-        <form onSubmit={addStudent} className="flex gap-2">
+        <form onSubmit={addServer} className="flex gap-2">
           <input
             className="flex-1 border rounded px-3 py-2"
             placeholder="Add Altar Server name and press Enter"
             value={nameInput}
             onChange={(e) => setNameInput(e.target.value)}
           />
-          <button className="px-4 py-2 rounded bg-blue-600 text-white" onClick={addStudent}>
+          <button className="px-4 py-2 rounded bg-blue-600 text-white" onClick={addServer}>
             Add
           </button>
         </form>
 
         <div className="mt-4 flex gap-2 flex-wrap">
-          <button className="px-3 py-1 rounded border" onClick={() => setStudents([])} title="Remove all students">
+          <button className="px-3 py-1 rounded border" onClick={() => setServers([])} title="Remove all servers">
             Remove all
-          </button>
-          <button
-            className="px-3 py-1 rounded border"
-            onClick={() => {
-              // sample data
-              const sample = [
-                { id: "s1", name: "Juan Dela Cruz" },
-                { id: "s2", name: "Maria Santos" },
-                { id: "s3", name: "Pedro Reyes" },
-              ];
-              setStudents(sample);
-            }}
-          >
-            Load sample
           </button>
         </div>
       </section>
@@ -194,7 +178,7 @@ export default function AttendanceTracker() {
         </div>
 
         <div className="md:col-span-2 bg-white rounded-lg shadow p-4">
-          <h2 className="font-semibold mb-2">Altar Servers ({students.length})</h2>
+          <h2 className="font-semibold mb-2">Altar Servers ({servers.length})</h2>
           <div className="overflow-auto">
             <table className="min-w-full text-left">
               <thead>
@@ -206,7 +190,7 @@ export default function AttendanceTracker() {
                 </tr>
               </thead>
               <tbody>
-                {filteredStudents.map((s) => {
+                {filteredServers.map((s) => {
                   const val = records[date] && records[date][s.id];
                   return (
                     <tr key={s.id} className="border-b hover:bg-gray-50">
@@ -219,26 +203,28 @@ export default function AttendanceTracker() {
                           <button className={`px-2 py-1 rounded border ${val === "absent" ? "bg-red-100" : ""}`} onClick={() => setRecords((r) => ({ ...r, [date]: { ...(r[date] || {}), [s.id]: "absent" } }))}>
                             Absent
                           </button>
-                          <button className="px-2 py-1 rounded border" onClick={() => toggleAttendance(s.id)}>Toggle</button>
+                          <button className={`px-2 py-1 rounded border ${val === "late" ? "bg-yellow-100" : ""}`} onClick={() => setRecords((r) => ({ ...r, [date]: { ...(r[date] || {}), [s.id]: "late" } }))}>
+                            Late
+                          </button>
                         </div>
                       </td>
                       <td className="py-2">
                         {(() => {
-                          const sum = attendanceSummaryForStudent(s.id);
+                          const sum = attendanceSummaryForServer(s.id);
                           return (
-                            <div className="text-sm text-gray-700">{sum.present} present • {sum.absent} absent • {sum.total} recorded</div>
+                            <div className="text-sm text-gray-700">{sum.present} present • {sum.absent} absent • {sum.late} late • {sum.total} recorded</div>
                           );
                         })()}
                       </td>
                       <td className="py-2">
-                        <button className="px-2 py-1 rounded border text-sm" onClick={() => removeStudent(s.id)}>Remove</button>
+                        <button className="px-2 py-1 rounded border text-sm" onClick={() => removeServer(s.id)}>Remove</button>
                       </td>
                     </tr>
                   );
                 })}
-                {students.length === 0 && (
+                {servers.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="py-4 text-center text-gray-500">No Altar Servers yet. Add one above or load sample.</td>
+                    <td colSpan={4} className="py-4 text-center text-gray-500">No Altar Servers yet. Add one above.</td>
                   </tr>
                 )}
               </tbody>
@@ -248,7 +234,7 @@ export default function AttendanceTracker() {
       </section>
 
       <footer className="text-sm text-gray-600 mt-6">
-        SAN ROQUE PARISH ALTAR SERVER ATTENDANCE TRACKER
+        SAN ROQUE PARISH ALTAR SERVERS ATTENDANCE
       </footer>
     </div>
   );
