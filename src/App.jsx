@@ -5,11 +5,7 @@ import { loadAttendanceData, saveAttendanceData } from "./syncWithSupabase";
 const LOGIN_KEY = "attendance_login_v1";
 const STORAGE_KEY = "attendance_tracker_v1";
 const USERS = [
-  { username: "leader_4pm", password: "leader4PM" },
-  { username: "leader_5am", password: "leader5AM" },
-  { username: "leader_8am", password: "leader8AM" },
-  { username: "leader_10am", password: "leader10AM" },
-  { username: "leader_6pm", password: "leader6PM" },
+  { username: "srp_leaders", password: "srpMassLeaders" },
 ];
 
 function formatDateISO(d) {
