@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import logo from "./assets/logo.png";
+import { loadAttendanceData, saveAttendanceData } from "./syncWithSupabase";
 
 const STORAGE_KEY = "attendance_tracker_v1";
 const LOGIN_KEY = "attendance_login_v1";
@@ -26,41 +27,47 @@ export default function AttendanceTracker() {
 
   // tracker states
   const [altarServers, setAltarServers] = useState([]);
+  const [records, setRecords] = useState({});
   const [nameInput, setNameInput] = useState("");
   const [date, setDate] = useState(formatDateISO(new Date()));
-  const [records, setRecords] = useState({});
   const [filter, setFilter] = useState("all");
 
-  // check login from localStorage
+  // -----------------------
+  // Check login from localStorage
+  // -----------------------
   useEffect(() => {
     const loggedIn = localStorage.getItem(LOGIN_KEY);
     if (loggedIn === "true") setIsLoggedIn(true);
   }, []);
 
-  // handle login
-  const handleLogin = (e) => {
-    e.preventDefault();
-    const found = USERS.find(
-      (u) =>
-        u.username === loginInput.username && u.password === loginInput.password
-    );
-    if (found) {
-      setIsLoggedIn(true);
-      localStorage.setItem(LOGIN_KEY, "true");
-      localStorage.setItem("login_user", found.username); // ✅ store logged-in user
-    } else {
-      alert("Invalid username or password!");
-    }
-  };
+  // -----------------------
+  // Load data from Supabase after login
+  // -----------------------
+  useEffect(() => {
+    if (!isLoggedIn) return;
 
-  // handle logout
-  const handleLogout = () => {
-    setIsLoggedIn(false);
-    localStorage.removeItem(LOGIN_KEY);
-    localStorage.removeItem("login_user");
-  };
+    loadAttendanceData().then(({ altarServers, records }) => {
+      // sort servers by name
+      const sortedServers = (altarServers || []).sort((a, b) =>
+        a.name.localeCompare(b.name)
+      );
+      setAltarServers(sortedServers);
+      setRecords(records || {});
+    });
+  }, [isLoggedIn]);
 
-  // load tracker data
+  // -----------------------
+  // Save data to Supabase whenever altarServers or records change
+  // -----------------------
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    saveAttendanceData({ altarServers, records });
+  }, [altarServers, records, isLoggedIn]);
+
+  // -----------------------
+  // Load tracker data from localStorage (optional, can co-exist with Supabase)
+  // -----------------------
   useEffect(() => {
     if (!isLoggedIn) return;
     try {
@@ -78,21 +85,47 @@ export default function AttendanceTracker() {
     }
   }, [isLoggedIn]);
 
-  // save tracker data
+  // Save to localStorage whenever data changes
   useEffect(() => {
     if (!isLoggedIn) return;
     const payload = { altarServers, records };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   }, [altarServers, records, isLoggedIn]);
 
-  // attendance logic ---------------------
+  // -----------------------
+  // Login / Logout handlers
+  // -----------------------
+  const handleLogin = (e) => {
+    e.preventDefault();
+    const found = USERS.find(
+      (u) =>
+        u.username === loginInput.username && u.password === loginInput.password
+    );
+    if (found) {
+      setIsLoggedIn(true);
+      localStorage.setItem(LOGIN_KEY, "true");
+      localStorage.setItem("login_user", found.username);
+    } else {
+      alert("Invalid username or password!");
+    }
+  };
+
+  const handleLogout = () => {
+    setIsLoggedIn(false);
+    localStorage.removeItem(LOGIN_KEY);
+    localStorage.removeItem("login_user");
+  };
+
+  // -----------------------
+  // Attendance logic
+  // -----------------------
   const addAltarServer = (e) => {
     e?.preventDefault();
     const trimmed = nameInput.trim();
     if (!trimmed) return;
 
     const currentUser = localStorage.getItem("login_user");
-    const userGroup = currentUser ? currentUser.split("_")[1] : ""; // e.g. "4pm"
+    const userGroup = currentUser ? currentUser.split("_")[1] : "";
 
     const duplicate = altarServers.some(
       (s) =>
@@ -156,12 +189,12 @@ export default function AttendanceTracker() {
     return { present, absent, late, total };
   };
 
-  // filtering with user restriction
+  // -----------------------
+  // Filtering
+  // -----------------------
   const currentUser = localStorage.getItem("login_user");
   const userGroup = currentUser ? currentUser.split("_")[1] : "";
-
   const groupFilteredServers = altarServers.filter((s) => s.group === userGroup);
-
   const filteredAltarServers = groupFilteredServers.filter((s) => {
     if (filter === "all") return true;
     const val = records[date] && records[date][s.id];
@@ -171,7 +204,9 @@ export default function AttendanceTracker() {
     return true;
   });
 
-  // if not logged in, show login form
+  // -----------------------
+  // Render
+  // -----------------------
   if (!isLoggedIn) {
     return (
       <div className="flex justify-center items-center h-screen">
@@ -221,7 +256,6 @@ export default function AttendanceTracker() {
     );
   }
 
-  // if logged in, show tracker
   return (
     <div className="flex justify-center items-center">
       <div>
