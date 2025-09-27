@@ -3,6 +3,7 @@ import logo from "./assets/logo.png";
 import { loadAttendanceData, saveAttendanceData } from "./syncWithSupabase";
 
 const LOGIN_KEY = "attendance_login_v1";
+const STORAGE_KEY = "attendance_tracker_v1";
 const USERS = [
   { username: "leader_4pm", password: "leader4PM" },
   { username: "leader_5am", password: "leader5AM" },
@@ -22,38 +23,64 @@ export default function AttendanceTracker() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [loginInput, setLoginInput] = useState({ username: "", password: "" });
   const [altarServers, setAltarServers] = useState([]);
-  const [records, setRecords] = useState({});
   const [nameInput, setNameInput] = useState("");
   const [date, setDate] = useState(formatDateISO(new Date()));
+  const [records, setRecords] = useState({});
   const [filter, setFilter] = useState("all");
   const [loading, setLoading] = useState(true);
 
-  // check login from localStorage
+  // Load login state
   useEffect(() => {
     const loggedIn = localStorage.getItem(LOGIN_KEY);
     if (loggedIn === "true") setIsLoggedIn(true);
   }, []);
 
-  // load Supabase data after login
+  // Load data from Supabase and localStorage
   useEffect(() => {
     if (!isLoggedIn) return;
+
     const fetchData = async () => {
       setLoading(true);
-      const { altarServers, records } = await loadAttendanceData();
-      setAltarServers(altarServers || []);
-      setRecords(records || {});
+
+      const { altarServers: supaServers, records: supaRecords } =
+        await loadAttendanceData();
+
+      const raw = localStorage.getItem(STORAGE_KEY);
+      const localData = raw
+        ? JSON.parse(raw)
+        : { altarServers: [], records: {} };
+
+      // Merge Supabase + localStorage
+      const mergedServers = [...localData.altarServers, ...supaServers].filter(
+        (v, i, a) => a.findIndex((t) => t.id === v.id) === i
+      );
+
+      const mergedRecords = { ...localData.records, ...supaRecords };
+
+      setAltarServers(mergedServers);
+      setRecords(mergedRecords);
       setLoading(false);
     };
+
     fetchData();
   }, [isLoggedIn]);
 
-  // save any change immediately to Supabase
+  // Persist changes to localStorage and Supabase
   useEffect(() => {
     if (!isLoggedIn || loading) return;
-    saveAttendanceData({ altarServers, records });
+    const payload = { altarServers, records };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+
+    (async () => {
+      try {
+        await saveAttendanceData(payload);
+      } catch (err) {
+        console.error("Supabase save failed:", err);
+      }
+    })();
   }, [altarServers, records, isLoggedIn, loading]);
 
-  // login/logout handlers
+  // Login / Logout
   const handleLogin = (e) => {
     e.preventDefault();
     const found = USERS.find(
@@ -75,7 +102,7 @@ export default function AttendanceTracker() {
     localStorage.removeItem("login_user");
   };
 
-  // attendance logic
+  // Add / Remove altar servers
   const addAltarServer = (e) => {
     e?.preventDefault();
     const trimmed = nameInput.trim();
@@ -86,7 +113,8 @@ export default function AttendanceTracker() {
 
     const duplicate = altarServers.some(
       (s) =>
-        s.name.toLowerCase() === trimmed.toLowerCase() && s.group === userGroup
+        s.name.toLowerCase() === trimmed.toLowerCase() &&
+        s.group === userGroup
     );
     if (duplicate) {
       alert("This altar server is already recorded!");
@@ -116,9 +144,13 @@ export default function AttendanceTracker() {
   };
 
   const markAll = (status) => {
+    const currentUser = localStorage.getItem("login_user");
+    const userGroup = currentUser ? currentUser.split("_")[1] : "";
+    const groupServers = altarServers.filter((s) => s.group === userGroup);
+
     setRecords((r) => {
       const row = {};
-      filteredAltarServers.forEach((s) => (row[s.id] = status));
+      groupServers.forEach((s) => (row[s.id] = status));
       return { ...r, [date]: row };
     });
   };
@@ -161,10 +193,9 @@ export default function AttendanceTracker() {
   if (!isLoggedIn) {
     return (
       <div className="flex justify-center items-center h-screen">
-        {/* LOGIN FORM */}
         <form
           onSubmit={handleLogin}
-          className="bg-[#e0f3ff] p-6 rounded-[1rem] shadow-md w-[32rem] h-[32.5rem]"
+          className="bg-[#e0f3ff] p-6 rounded-[1rem] shadow-md w-[32rem]"
         >
           <div className="flex justify-center items-center">
             <img src={logo} className="w-[10rem]" />
@@ -219,19 +250,40 @@ export default function AttendanceTracker() {
     <div className="flex justify-center items-center">
       <div className="max-w-5xl mx-auto p-6">
         <header className="mb-6 flex justify-between items-center">
-          <h1 className="text-2xl font-bold mb-1 text-[#11a9f0]">SRP Altar Servers Attendance</h1>
-          <button onClick={handleLogout} className="px-4 py-2 rounded bg-[#6d8391] cursor-pointer text-white hover:bg-[#317199]">Logout</button>
+          <h1 className="text-2xl font-bold mb-1 text-[#11a9f0]">
+            SRP Altar Servers Attendance
+          </h1>
+          <button
+            onClick={handleLogout}
+            className="px-4 py-2 rounded bg-[#6d8391] cursor-pointer text-white hover:bg-[#317199]"
+          >
+            Logout
+          </button>
         </header>
 
         {/* Tracker Section */}
         <section className="bg-white rounded-lg shadow p-4 mb-6">
           <form onSubmit={addAltarServer} className="flex gap-2">
-            <input className="flex-1 border rounded px-3 py-2" placeholder="Add Altar Server Full Name and Press Enter"
-              value={nameInput} onChange={(e) => setNameInput(e.target.value)} />
-            <button className="px-4 py-2 rounded bg-[#42aaff] text-white cursor-pointer hover:bg-blue-700" onClick={addAltarServer}>Add</button>
+            <input
+              className="flex-1 border rounded px-3 py-2"
+              placeholder="Add Altar Server Full Name and Press Enter"
+              value={nameInput}
+              onChange={(e) => setNameInput(e.target.value)}
+            />
+            <button
+              className="px-4 py-2 rounded bg-[#42aaff] text-white cursor-pointer hover:bg-blue-700"
+              onClick={addAltarServer}
+            >
+              Add
+            </button>
           </form>
           <div className="mt-4 flex gap-2 flex-wrap">
-            <button className="px-3 py-1 rounded border cursor-pointer bg-[#42aaff] text-white hover:bg-blue-700" onClick={() => setAltarServers([])} title="Remove all altar servers">Remove all</button>
+            <button
+              className="px-3 py-1 rounded border cursor-pointer bg-[#42aaff] text-white hover:bg-blue-700"
+              onClick={() => setAltarServers([])}
+            >
+              Remove all
+            </button>
           </div>
         </section>
 
@@ -239,15 +291,39 @@ export default function AttendanceTracker() {
         <section className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-white rounded-lg shadow p-4">
             <label className="block text-sm font-medium">Date</label>
-            <input type="date" className="mt-1 p-2 border rounded w-full" value={date} onChange={(e) => setDate(e.target.value)} />
+            <input
+              type="date"
+              className="mt-1 p-2 border rounded w-full"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
             <div className="mt-4 flex gap-2">
-              <button className="px-3 py-1 rounded border bg-[#30b017] text-white cursor-pointer hover:bg-[#48de2a]" onClick={() => markAll("present")}>Mark all Present</button>
-              <button className="px-3 py-1 rounded border bg-[#e63c3c] text-white cursor-pointer hover:bg-[#f56464]" onClick={() => markAll("absent")}>Mark all Absent</button>
-              <button className="px-3 py-1 rounded bg-[#42aaff] text-white cursor-pointer hover:bg-blue-600" onClick={clearDate}>Clear Date</button>
+              <button
+                className="px-3 py-1 rounded border bg-[#30b017] text-white cursor-pointer hover:bg-[#48de2a]"
+                onClick={() => markAll("present")}
+              >
+                Mark all Present
+              </button>
+              <button
+                className="px-3 py-1 rounded border bg-[#e63c3c] text-white cursor-pointer hover:bg-[#f56464]"
+                onClick={() => markAll("absent")}
+              >
+                Mark all Absent
+              </button>
+              <button
+                className="px-3 py-1 rounded bg-[#42aaff] text-white cursor-pointer hover:bg-blue-600"
+                onClick={clearDate}
+              >
+                Clear Date
+              </button>
             </div>
             <div className="mt-4">
               <label className="block text-sm font-medium">Filter</label>
-              <select className="mt-1 p-2 border rounded w-full" value={filter} onChange={(e) => setFilter(e.target.value)}>
+              <select
+                className="mt-1 p-2 border rounded w-full"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+              >
                 <option value="all">All</option>
                 <option value="present">Present</option>
                 <option value="absent">Absent</option>
@@ -257,7 +333,9 @@ export default function AttendanceTracker() {
           </div>
 
           <div className="md:col-span-2 bg-white rounded-lg shadow p-4">
-            <h2 className="font-semibold mb-2">Altar Servers ({filteredAltarServers.length})</h2>
+            <h2 className="font-semibold mb-2">
+              Altar Servers ({filteredAltarServers.length})
+            </h2>
             <div className="overflow-auto">
               <table className="min-w-full text-left">
                 <thead>
@@ -276,28 +354,97 @@ export default function AttendanceTracker() {
                         <td className="py-2 px-2">{s.name}</td>
                         <td className="py-2 px-1">
                           <div className="inline-flex gap-2">
-                            <button className={`px-2 py-1 rounded border hover:bg-green-100 cursor-pointer ${val === "present" ? "bg-green-100" : ""}`} onClick={() => setRecords(r => ({ ...r, [date]: { ...(r[date] || {}), [s.id]: "present" } }))}>Present</button>
-                            <button className={`px-2 py-1 rounded border hover:bg-red-100 cursor-pointer ${val === "absent" ? "bg-red-100" : ""}`} onClick={() => setRecords(r => ({ ...r, [date]: { ...(r[date] || {}), [s.id]: "absent" } }))}>Absent</button>
-                            <button className={`px-2 py-1 rounded border hover:bg-yellow-100 cursor-pointer ${val === "late" ? "bg-yellow-100" : ""}`} onClick={() => setRecords(r => ({ ...r, [date]: { ...(r[date] || {}), [s.id]: "late" } }))}>Late</button>
+                            <button
+                              className={`px-2 py-1 rounded border hover:bg-green-100 cursor-pointer ${
+                                val === "present" ? "bg-green-100" : ""
+                              }`}
+                              onClick={() =>
+                                setRecords((r) => ({
+                                  ...r,
+                                  [date]: {
+                                    ...(r[date] || {}),
+                                    [s.id]: "present",
+                                  },
+                                }))
+                              }
+                            >
+                              Present
+                            </button>
+                            <button
+                              className={`px-2 py-1 rounded border hover:bg-red-100 cursor-pointer ${
+                                val === "absent" ? "bg-red-100" : ""
+                              }`}
+                              onClick={() =>
+                                setRecords((r) => ({
+                                  ...r,
+                                  [date]: {
+                                    ...(r[date] || {}),
+                                    [s.id]: "absent",
+                                  },
+                                }))
+                              }
+                            >
+                              Absent
+                            </button>
+                            <button
+                              className={`px-2 py-1 rounded border hover:bg-yellow-100 cursor-pointer ${
+                                val === "late" ? "bg-yellow-100" : ""
+                              }`}
+                              onClick={() =>
+                                setRecords((r) => ({
+                                  ...r,
+                                  [date]: {
+                                    ...(r[date] || {}),
+                                    [s.id]: "late",
+                                  },
+                                }))
+                              }
+                            >
+                              Late
+                            </button>
                           </div>
                         </td>
                         <td className="py-2 pl-2">
-                          {(() => { const sum = attendanceSummaryForAltarServer(s.id); return <div className="text-sm text-gray-700">{sum.present} Present • {sum.absent} Absent • {sum.late} Late • {sum.total} Recorded</div>; })()}
+                          {(() => {
+                            const sum = attendanceSummaryForAltarServer(s.id);
+                            return (
+                              <div className="text-sm text-gray-700">
+                                {sum.present} Present • {sum.absent} Absent •{" "}
+                                {sum.late} Late • {sum.total} Recorded
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td className="py-2 px-2">
-                          <button className="px-2 py-1 rounded border text-sm cursor-pointer bg-[#42aaff] text-white hover:bg-blue-600" onClick={() => removeAltarServer(s.id)}>Remove</button>
+                          <button
+                            className="px-2 py-1 rounded border text-sm cursor-pointer bg-[#42aaff] text-white hover:bg-blue-600"
+                            onClick={() => removeAltarServer(s.id)}
+                          >
+                            Remove
+                          </button>
                         </td>
                       </tr>
                     );
                   })}
-                  {filteredAltarServers.length === 0 && <tr><td colSpan={4} className="py-4 text-center text-gray-500">No Altar Servers yet. Add one above.</td></tr>}
+                  {altarServers.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={4}
+                        className="py-4 text-center text-gray-500"
+                      >
+                        No Altar Servers yet. Add one above.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
           </div>
         </section>
 
-        <footer className="text-sm text-white mt-6">SAN ROQUE PARISH ALTAR SERVERS ATTENDANCE</footer>
+        <footer className="text-sm text-white mt-6">
+          SAN ROQUE PARISH ALTAR SERVERS ATTENDANCE
+        </footer>
       </div>
     </div>
   );
