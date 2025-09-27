@@ -11,7 +11,7 @@ export async function loadAttendanceData() {
 
   // Load attendance records
   const { data: recordsData, error: recordsError } = await supabase
-    .from("attendance_records")
+    .from("altar_servers")
     .select("*");
   if (recordsError) console.error("Error loading records:", recordsError);
 
@@ -42,7 +42,7 @@ export async function saveAttendanceData({ altarServers, records }) {
     const row = records[date];
     for (const serverId of Object.keys(row)) {
       await supabase
-        .from("attendance_records")
+        .from("altar_servers")
         .upsert({ server_id: serverId, date, status: row[serverId] });
     }
   }
