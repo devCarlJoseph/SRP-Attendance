@@ -26,6 +26,7 @@ export default function AttendanceTracker() {
   const [nameInput, setNameInput] = useState("");
   const [date, setDate] = useState(formatDateISO(new Date()));
   const [records, setRecords] = useState({});
+  const [dirtyRecords, setDirtyRecords] = useState({});
   const [filter, setFilter] = useState("all");
   const [loading, setLoading] = useState(true);
 
@@ -35,50 +36,61 @@ export default function AttendanceTracker() {
     if (loggedIn === "true") setIsLoggedIn(true);
   }, []);
 
-  // Load data from Supabase and localStorage
+  // Load data from Supabase on login
   useEffect(() => {
     if (!isLoggedIn) return;
 
     const fetchData = async () => {
       setLoading(true);
+      try {
+        const { altarServers: supaServers, records: supaRecords } =
+          await loadAttendanceData();
 
-      const { altarServers: supaServers, records: supaRecords } =
-        await loadAttendanceData();
+        // Merge with localStorage for faster UI
+        const raw = localStorage.getItem(STORAGE_KEY);
+        const localData = raw
+          ? JSON.parse(raw)
+          : { altarServers: [], records: {} };
 
-      const raw = localStorage.getItem(STORAGE_KEY);
-      const localData = raw
-        ? JSON.parse(raw)
-        : { altarServers: [], records: {} };
+        // Merge servers
+        const mergedServers = [...localData.altarServers, ...supaServers].filter(
+          (v, i, a) => a.findIndex((t) => t.id === v.id) === i
+        );
 
-      // Merge Supabase + localStorage
-      const mergedServers = [...localData.altarServers, ...supaServers].filter(
-        (v, i, a) => a.findIndex((t) => t.id === v.id) === i
-      );
+        // Merge records
+        const mergedRecords = { ...localData.records, ...supaRecords };
 
-      const mergedRecords = { ...localData.records, ...supaRecords };
-
-      setAltarServers(mergedServers);
-      setRecords(mergedRecords);
-      setLoading(false);
+        setAltarServers(mergedServers);
+        setRecords(mergedRecords);
+        setLoading(false);
+      } catch (err) {
+        console.error("Error loading data:", err);
+        setLoading(false);
+      }
     };
 
     fetchData();
   }, [isLoggedIn]);
 
-  // Persist changes to localStorage and Supabase
+  // Save dirty records to Supabase with debounce
   useEffect(() => {
     if (!isLoggedIn || loading) return;
-    const payload = { altarServers, records };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    // Always save to localStorage immediately
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ altarServers, records }));
 
-    (async () => {
+    if (Object.keys(dirtyRecords).length === 0) return;
+
+    const timeout = setTimeout(async () => {
       try {
-        await saveAttendanceData(payload);
+        await saveAttendanceData({ altarServers, records: dirtyRecords });
+        setDirtyRecords({});
       } catch (err) {
         console.error("Supabase save failed:", err);
       }
-    })();
-  }, [altarServers, records, isLoggedIn, loading]);
+    }, 1500);
+
+    return () => clearTimeout(timeout);
+  }, [records, altarServers, dirtyRecords, isLoggedIn, loading]);
 
   // Login / Logout
   const handleLogin = (e) => {
@@ -139,7 +151,27 @@ export default function AttendanceTracker() {
           copy[d] = rec;
         }
       }
+      // Also remove from dirty
+      setDirtyRecords((d) => {
+        const copyDirty = { ...d };
+        for (const dd of Object.keys(copyDirty)) {
+          if (copyDirty[dd][id]) delete copyDirty[dd][id];
+        }
+        return copyDirty;
+      });
       return copy;
+    });
+  };
+
+  // Mark attendance
+  const markAttendance = (serverId, status) => {
+    setRecords((r) => {
+      const updated = { ...r, [date]: { ...(r[date] || {}), [serverId]: status } };
+      setDirtyRecords((d) => ({
+        ...d,
+        [date]: { ...(d[date] || {}), [serverId]: status },
+      }));
+      return updated;
     });
   };
 
@@ -151,6 +183,7 @@ export default function AttendanceTracker() {
     setRecords((r) => {
       const row = {};
       groupServers.forEach((s) => (row[s.id] = status));
+      setDirtyRecords((d) => ({ ...d, [date]: row }));
       return { ...r, [date]: row };
     });
   };
@@ -159,6 +192,11 @@ export default function AttendanceTracker() {
     setRecords((r) => {
       const copy = { ...r };
       delete copy[date];
+      setDirtyRecords((d) => {
+        const copyDirty = { ...d };
+        delete copyDirty[date];
+        return copyDirty;
+      });
       return copy;
     });
   };
@@ -245,6 +283,7 @@ export default function AttendanceTracker() {
         Loading...
       </div>
     );
+
 
   return (
     <div className="flex justify-center items-center">
