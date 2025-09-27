@@ -1,17 +1,6 @@
 import React, { useEffect, useState } from "react";
-import logo from "./assets/logo.png";
 
 const STORAGE_KEY = "attendance_tracker_v1";
-const LOGIN_KEY = "attendance_login_v1";
-
-// demo login account (change to your own)
-const USERS = [
-  { username: "leader_4pm", password: "leader4PM" },
-  { username: "leader_5am", password: "leader5AM" },
-  { username: "leader_8am", password: "leader8AM" },
-  { username: "leader_10am", password: "leader10AM" },
-  { username: "leader_6pm", password: "leader6PM" },
-];
 
 function formatDateISO(d) {
   const y = d.getFullYear();
@@ -21,47 +10,13 @@ function formatDateISO(d) {
 }
 
 export default function AttendanceTracker() {
-  // login state
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [loginInput, setLoginInput] = useState({ username: "", password: "" });
-
-  // tracker states
   const [altarServers, setAltarServers] = useState([]);
   const [nameInput, setNameInput] = useState("");
   const [date, setDate] = useState(formatDateISO(new Date()));
   const [records, setRecords] = useState({});
   const [filter, setFilter] = useState("all");
 
-  // check login from localStorage
   useEffect(() => {
-    const loggedIn = localStorage.getItem(LOGIN_KEY);
-    if (loggedIn === "true") setIsLoggedIn(true);
-  }, []);
-
-  // handle login
-  const handleLogin = (e) => {
-  e.preventDefault();
-  const found = USERS.find(
-    (u) =>
-      u.username === loginInput.username && u.password === loginInput.password
-  );
-  if (found) {
-    setIsLoggedIn(true);
-    localStorage.setItem(LOGIN_KEY, "true");
-  } else {
-    alert("Invalid username or password!");
-  }
-};
-
-  // handle logout
-  const handleLogout = () => {
-    setIsLoggedIn(false);
-    localStorage.removeItem(LOGIN_KEY);
-  };
-
-  // load tracker data
-  useEffect(() => {
-    if (!isLoggedIn) return;
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
@@ -75,21 +30,19 @@ export default function AttendanceTracker() {
     } catch (e) {
       console.error("Failed to load attendance from storage", e);
     }
-  }, [isLoggedIn]);
+  }, []);
 
-  // save tracker data
   useEffect(() => {
-    if (!isLoggedIn) return;
     const payload = { altarServers, records };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-  }, [altarServers, records, isLoggedIn]);
+  }, [altarServers, records]);
 
-  // attendance logic ---------------------
   const addAltarServer = (e) => {
     e?.preventDefault();
     const trimmed = nameInput.trim();
     if (!trimmed) return;
 
+    // Check for duplicates (case-insensitive)
     const duplicate = altarServers.some(
       (s) => s.name.toLowerCase() === trimmed.toLowerCase()
     );
@@ -100,7 +53,10 @@ export default function AttendanceTracker() {
 
     const id = Date.now().toString();
     const newList = [...altarServers, { id, name: trimmed }];
+
+    // Sort alphabetically
     newList.sort((a, b) => a.name.localeCompare(b.name));
+
     setAltarServers(newList);
     setNameInput("");
   };
@@ -160,70 +116,16 @@ export default function AttendanceTracker() {
     return true;
   });
 
-  // if not logged in, show login form
-  if (!isLoggedIn) {
-    return (
-      <div className="flex justify-center items-center h-screen">
-        <form
-          onSubmit={handleLogin}
-          className="bg-[#e0f3ff] p-6 rounded-[1rem] shadow-md w-[32rem] h-[32.5rem]"
-        >
-          <div className="flex justify-center items-center">
-            <img src={logo} className="w-[10rem]" />
-          </div>
-          <h2 className="text-xl font-bold text-center text-[#6a93ab]">Welcome Back Leaders</h2>
-          <p className="text-center mb-4 text-[#88a6b8]">Track and manage today’s altar server attendance with ease.</p>
-          <label htmlFor="Username" className="font-medium text-[#57768a]">Username</label>
-          <input
-            type="text"
-            placeholder="Enter Username"
-            className="w-full mb-3 mt-1 p-2 pl-4 border-2 border-[#6a93ab] rounded-[0.8rem] outline-none"
-            value={loginInput.username}
-            onChange={(e) =>
-              setLoginInput({ ...loginInput, username: e.target.value })
-            }
-          />
-          <label htmlFor="Password" className="font-medium text-[#57768a]">Password</label>
-          <input
-            type="text"
-            placeholder="Enter Password"
-            className="w-full mb-3 mt-1 p-2 pl-4 border-2 border-[#6a93ab] rounded-[0.8rem] outline-none"
-            value={loginInput.password}
-            onChange={(e) =>
-              setLoginInput({ ...loginInput, password: e.target.value })
-            }
-          />
-          <div className="flex justify-center items-center">
-            <button
-              type="submit"
-              className="w-[20rem] mt-[0.5rem] bg-[#42aaff] text-white py-2 rounded-[0.8rem] cursor-pointer hover:bg-blue-700"
-            >
-              Log In
-            </button>
-          </div>
-        </form>
-      </div>
-    );
-  }
-
-  // if logged in, show tracker
   return (
     <div className="flex justify-center items-center">
       <div>
         <div className="max-w-5xl mx-auto p-6">
-          <header className="mb-6 flex justify-between items-center">
+          <header className="mb-6">
             <h1 className="text-2xl font-bold mb-1 text-[#11a9f0]">
               SRP Altar Servers Attendance
             </h1>
-            <button
-              onClick={handleLogout}
-              className="px-4 py-2 rounded bg-[#6d8391] cursor-pointer text-white hover:bg-[#317199]"
-            >
-              Logout
-            </button>
           </header>
 
-          {/* --- your tracker (unchanged design) --- */}
           <section className="bg-white rounded-lg shadow p-4 mb-6">
             <form onSubmit={addAltarServer} className="flex gap-2">
               <input
@@ -242,7 +144,7 @@ export default function AttendanceTracker() {
 
             <div className="mt-4 flex gap-2 flex-wrap">
               <button
-                className="px-3 py-1 rounded border cursor-pointer bg-[#42aaff] text-white hover:bg-blue-700"
+                className="px-3 py-1 rounded border cursor-pointer bg-[#42aaff] text-[white] hover:bg-blue-700"
                 onClick={() => setAltarServers([])}
                 title="Remove all altar servers"
               >
@@ -320,8 +222,9 @@ export default function AttendanceTracker() {
                           <td className="py-2 px-1">
                             <div className="inline-flex gap-2">
                               <button
-                                className={`px-2 py-1 rounded border hover:bg-green-100 cursor-pointer ${val === "present" ? "bg-green-100" : ""
-                                  }`}
+                                className={`px-2 py-1 rounded border hover:bg-green-100 cursor-pointer ${
+                                  val === "present" ? "bg-green-100" : ""
+                                }`}
                                 onClick={() =>
                                   setRecords((r) => ({
                                     ...r,
@@ -335,8 +238,9 @@ export default function AttendanceTracker() {
                                 Present
                               </button>
                               <button
-                                className={`px-2 py-1 rounded border hover:bg-red-100 cursor-pointer ${val === "absent" ? "bg-red-100" : ""
-                                  }`}
+                                className={`px-2 py-1 rounded border hover:bg-red-100 cursor-pointer  ${
+                                  val === "absent" ? "bg-red-100" : ""
+                                }`}
                                 onClick={() =>
                                   setRecords((r) => ({
                                     ...r,
@@ -350,8 +254,9 @@ export default function AttendanceTracker() {
                                 Absent
                               </button>
                               <button
-                                className={`px-2 py-1 rounded border hover:bg-yellow-100 cursor-pointer ${val === "late" ? "bg-yellow-100" : ""
-                                  }`}
+                                className={`px-2 py-1 rounded border hover:bg-yellow-100 cursor-pointer  ${
+                                  val === "late" ? "bg-yellow-100" : ""
+                                }`}
                                 onClick={() =>
                                   setRecords((r) => ({
                                     ...r,
