@@ -36,22 +36,25 @@ export default function AttendanceTracker() {
 
   // load data
   useEffect(() => {
-    if (!isLoggedIn) return;
-    const fetchData = async () => {
-      setLoading(true);
-      const { altarServers, records } = await loadAttendanceData();
-      setAltarServers(altarServers || []);
-      setRecords(records || {});
-      setLoading(false);
-    };
-    fetchData();
-  }, [isLoggedIn]);
+  if (!isLoggedIn) return;
+  const fetchData = async () => {
+    setLoading(true);
+    const { altarServers, records } = await loadAttendanceData();
+    setAltarServers(altarServers || []);
+    setRecords(records || {});
+    setLoading(false);
+  };
+  fetchData();
+}, [isLoggedIn]);
 
-  // save data to Supabase on change
-  useEffect(() => {
-    if (!isLoggedIn || loading) return;
-    saveAttendanceData({ altarServers, records });
-  }, [altarServers, records, isLoggedIn, loading]);
+// Save whenever altarServers or records change, after loading completes
+useEffect(() => {
+  if (!isLoggedIn || loading) return;
+  const saveData = async () => {
+    await saveAttendanceData({ altarServers, records });
+  };
+  saveData();
+}, [altarServers, records, isLoggedIn, loading]);
 
   // login/logout
   const handleLogin = (e) => {
