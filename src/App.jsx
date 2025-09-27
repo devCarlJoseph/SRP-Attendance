@@ -51,12 +51,12 @@ export default function AttendanceTracker() {
 
   // save any change immediately to Supabase
   useEffect(() => {
-    if (!isLoggedIn) return;
+    if (!isLoggedIn || loading) return; // <-- prevent saving empty state
     const saveData = async () => {
       await saveAttendanceData({ altarServers, records });
     };
     saveData();
-  }, [altarServers, records, isLoggedIn]);
+  }, [altarServers, records, isLoggedIn, loading]);
 
   // login/logout handlers
   const handleLogin = (e) => {
@@ -166,6 +166,7 @@ export default function AttendanceTracker() {
   if (!isLoggedIn) {
     return (
       <div className="flex justify-center items-center h-screen">
+        {/* LOGIN FORM */}
         <form
           onSubmit={handleLogin}
           className="bg-[#e0f3ff] p-6 rounded-[1rem] shadow-md w-[32rem] h-[32.5rem]"
@@ -212,7 +213,12 @@ export default function AttendanceTracker() {
     );
   }
 
-  if (loading) return <div className="flex justify-center items-center h-screen">Loading...</div>;
+  if (loading)
+    return (
+      <div className="flex justify-center items-center h-screen">
+        Loading...
+      </div>
+    );
 
   return (
     <div className="flex justify-center items-center">
