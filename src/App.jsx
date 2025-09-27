@@ -28,16 +28,15 @@ export default function AttendanceTracker() {
   const [filter, setFilter] = useState("all");
   const [loading, setLoading] = useState(true);
 
-  // check login from localStorage
+  // check login
   useEffect(() => {
     const loggedIn = localStorage.getItem(LOGIN_KEY);
     if (loggedIn === "true") setIsLoggedIn(true);
   }, []);
 
-  // load Supabase data after login
+  // load data
   useEffect(() => {
     if (!isLoggedIn) return;
-
     const fetchData = async () => {
       setLoading(true);
       const { altarServers, records } = await loadAttendanceData();
@@ -45,20 +44,16 @@ export default function AttendanceTracker() {
       setRecords(records || {});
       setLoading(false);
     };
-
     fetchData();
   }, [isLoggedIn]);
 
-  // save any change immediately to Supabase
+  // save data to Supabase on change
   useEffect(() => {
-    if (!isLoggedIn || loading) return; // <-- prevent saving empty state
-    const saveData = async () => {
-      await saveAttendanceData({ altarServers, records });
-    };
-    saveData();
+    if (!isLoggedIn || loading) return;
+    saveAttendanceData({ altarServers, records });
   }, [altarServers, records, isLoggedIn, loading]);
 
-  // login/logout handlers
+  // login/logout
   const handleLogin = (e) => {
     e.preventDefault();
     const found = USERS.find(
