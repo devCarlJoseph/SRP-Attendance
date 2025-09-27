@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import logo from "./assets/logo.png";
 import { loadAttendanceData, saveAttendanceData } from "./syncWithSupabase";
 
+const STORAGE_KEY = "attendance_tracker_v1";
 const LOGIN_KEY = "attendance_login_v1";
 
 const USERS = [
@@ -30,7 +31,7 @@ export default function AttendanceTracker() {
   const [filter, setFilter] = useState("all");
 
   // -----------------------
-  // Check login
+  // Check login from localStorage
   // -----------------------
   useEffect(() => {
     const loggedIn = localStorage.getItem(LOGIN_KEY);
@@ -38,21 +39,40 @@ export default function AttendanceTracker() {
   }, []);
 
   // -----------------------
-  // Load Supabase data
+  // Load data from Supabase after login
   // -----------------------
   useEffect(() => {
     if (!isLoggedIn) return;
+
     loadAttendanceData().then(({ altarServers, records }) => {
       const sortedServers = (altarServers || []).sort((a, b) =>
         a.name.localeCompare(b.name)
       );
       setAltarServers(sortedServers);
       setRecords(records || {});
+
+      // Optional: cache in localStorage
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ altarServers: sortedServers, records: records || {} })
+      );
     });
   }, [isLoggedIn]);
 
   // -----------------------
-  // Login / Logout
+  // Save data to Supabase whenever altarServers or records change
+  // -----------------------
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    saveAttendanceData({ altarServers, records });
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ altarServers, records })
+    );
+  }, [altarServers, records, isLoggedIn]);
+
+  // -----------------------
+  // Login / Logout handlers
   // -----------------------
   const handleLogin = (e) => {
     e.preventDefault();
@@ -76,13 +96,8 @@ export default function AttendanceTracker() {
   };
 
   // -----------------------
-  // Attendance logic with immediate Supabase sync
+  // Attendance logic
   // -----------------------
-  const updateRecords = (newRecords) => {
-    setRecords(newRecords);
-    saveAttendanceData({ altarServers, records: newRecords });
-  };
-
   const addAltarServer = (e) => {
     e?.preventDefault();
     const trimmed = nameInput.trim();
@@ -104,43 +119,38 @@ export default function AttendanceTracker() {
     const newList = [...altarServers, { id, name: trimmed, group: userGroup }];
     newList.sort((a, b) => a.name.localeCompare(b.name));
     setAltarServers(newList);
-    saveAttendanceData({ altarServers: newList, records });
     setNameInput("");
   };
 
   const removeAltarServer = (id) => {
-    const newServers = altarServers.filter((x) => x.id !== id);
-    const newRecords = { ...records };
-    for (const d of Object.keys(newRecords)) {
-      if (newRecords[d] && newRecords[d][id]) {
-        const rec = { ...newRecords[d] };
-        delete rec[id];
-        newRecords[d] = rec;
+    setAltarServers((s) => s.filter((x) => x.id !== id));
+    setRecords((r) => {
+      const copy = { ...r };
+      for (const d of Object.keys(copy)) {
+        if (copy[d] && copy[d][id]) {
+          const rec = { ...copy[d] };
+          delete rec[id];
+          copy[d] = rec;
+        }
       }
-    }
-    setAltarServers(newServers);
-    updateRecords(newRecords);
+      return copy;
+    });
   };
 
   const markAll = (status) => {
-    const row = {};
-    filteredAltarServers.forEach((s) => (row[s.id] = status));
-    const newRecords = { ...records, [date]: row };
-    updateRecords(newRecords);
-  };
-
-  const markSingle = (id, status) => {
-    const newRecords = {
-      ...records,
-      [date]: { ...(records[date] || {}), [id]: status },
-    };
-    updateRecords(newRecords);
+    setRecords((r) => {
+      const row = {};
+      filteredAltarServers.forEach((s) => (row[s.id] = status));
+      return { ...r, [date]: row };
+    });
   };
 
   const clearDate = () => {
-    const newRecords = { ...records };
-    delete newRecords[date];
-    updateRecords(newRecords);
+    setRecords((r) => {
+      const copy = { ...r };
+      delete copy[date];
+      return copy;
+    });
   };
 
   const attendanceSummaryForAltarServer = (altarServerId) => {
@@ -261,10 +271,7 @@ export default function AttendanceTracker() {
             <div className="mt-4 flex gap-2 flex-wrap">
               <button
                 className="px-3 py-1 rounded border cursor-pointer bg-[#42aaff] text-white hover:bg-blue-700"
-                onClick={() => {
-                  setAltarServers([]);
-                  saveAttendanceData({ altarServers: [], records });
-                }}
+                onClick={() => setAltarServers([])}
                 title="Remove all altar servers"
               >
                 Remove all
@@ -344,7 +351,15 @@ export default function AttendanceTracker() {
                                 className={`px-2 py-1 rounded border hover:bg-green-100 cursor-pointer ${
                                   val === "present" ? "bg-green-100" : ""
                                 }`}
-                                onClick={() => markSingle(s.id, "present")}
+                                onClick={() =>
+                                  setRecords((r) => ({
+                                    ...r,
+                                    [date]: {
+                                      ...(r[date] || {}),
+                                      [s.id]: "present",
+                                    },
+                                  }))
+                                }
                               >
                                 Present
                               </button>
@@ -352,7 +367,15 @@ export default function AttendanceTracker() {
                                 className={`px-2 py-1 rounded border hover:bg-red-100 cursor-pointer ${
                                   val === "absent" ? "bg-red-100" : ""
                                 }`}
-                                onClick={() => markSingle(s.id, "absent")}
+                                onClick={() =>
+                                  setRecords((r) => ({
+                                    ...r,
+                                    [date]: {
+                                      ...(r[date] || {}),
+                                      [s.id]: "absent",
+                                    },
+                                  }))
+                                }
                               >
                                 Absent
                               </button>
@@ -360,7 +383,15 @@ export default function AttendanceTracker() {
                                 className={`px-2 py-1 rounded border hover:bg-yellow-100 cursor-pointer ${
                                   val === "late" ? "bg-yellow-100" : ""
                                 }`}
-                                onClick={() => markSingle(s.id, "late")}
+                                onClick={() =>
+                                  setRecords((r) => ({
+                                    ...r,
+                                    [date]: {
+                                      ...(r[date] || {}),
+                                      [s.id]: "late",
+                                    },
+                                  }))
+                                }
                               >
                                 Late
                               </button>
