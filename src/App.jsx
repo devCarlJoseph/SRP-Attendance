@@ -2,9 +2,7 @@ import React, { useEffect, useState } from "react";
 import logo from "./assets/logo.png";
 import { loadAttendanceData, saveAttendanceData } from "./syncWithSupabase";
 
-const STORAGE_KEY = "attendance_tracker_v1";
 const LOGIN_KEY = "attendance_login_v1";
-
 const USERS = [
   { username: "leader_4pm", password: "leader4PM" },
   { username: "leader_5am", password: "leader5AM" },
@@ -23,7 +21,6 @@ function formatDateISO(d) {
 export default function AttendanceTracker() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [loginInput, setLoginInput] = useState({ username: "", password: "" });
-
   const [altarServers, setAltarServers] = useState([]);
   const [records, setRecords] = useState({});
   const [nameInput, setNameInput] = useState("");
@@ -31,7 +28,7 @@ export default function AttendanceTracker() {
   const [filter, setFilter] = useState("all");
 
   // -----------------------
-  // Check login from localStorage
+  // Login check
   // -----------------------
   useEffect(() => {
     const loggedIn = localStorage.getItem(LOGIN_KEY);
@@ -39,40 +36,35 @@ export default function AttendanceTracker() {
   }, []);
 
   // -----------------------
-  // Load data from Supabase after login
+  // Load Supabase data ONCE after login
   // -----------------------
   useEffect(() => {
     if (!isLoggedIn) return;
 
-    loadAttendanceData().then(({ altarServers, records }) => {
-      const sortedServers = (altarServers || []).sort((a, b) =>
-        a.name.localeCompare(b.name)
-      );
-      setAltarServers(sortedServers);
-      setRecords(records || {});
+    async function fetchData() {
+      try {
+        const { altarServers: servers, records: recs } = await loadAttendanceData();
+        const sortedServers = (servers || []).sort((a, b) => a.name.localeCompare(b.name));
+        setAltarServers(sortedServers);
+        setRecords(recs || {});
+      } catch (err) {
+        console.error("Failed to load attendance:", err);
+      }
+    }
 
-      // Optional: cache in localStorage
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({ altarServers: sortedServers, records: records || {} })
-      );
-    });
+    fetchData();
   }, [isLoggedIn]);
 
   // -----------------------
-  // Save data to Supabase whenever altarServers or records change
+  // Save to Supabase whenever data changes
   // -----------------------
   useEffect(() => {
     if (!isLoggedIn) return;
-    saveAttendanceData({ altarServers, records });
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ altarServers, records })
-    );
+    saveAttendanceData({ altarServers, records }).catch(console.error);
   }, [altarServers, records, isLoggedIn]);
 
   // -----------------------
-  // Login / Logout handlers
+  // Login / Logout
   // -----------------------
   const handleLogin = (e) => {
     e.preventDefault();
@@ -84,9 +76,7 @@ export default function AttendanceTracker() {
       setIsLoggedIn(true);
       localStorage.setItem(LOGIN_KEY, "true");
       localStorage.setItem("login_user", found.username);
-    } else {
-      alert("Invalid username or password!");
-    }
+    } else alert("Invalid username or password!");
   };
 
   const handleLogout = () => {
@@ -102,23 +92,14 @@ export default function AttendanceTracker() {
     e?.preventDefault();
     const trimmed = nameInput.trim();
     if (!trimmed) return;
-
     const currentUser = localStorage.getItem("login_user");
     const userGroup = currentUser ? currentUser.split("_")[1] : "";
-
-    const duplicate = altarServers.some(
-      (s) =>
-        s.name.toLowerCase() === trimmed.toLowerCase() && s.group === userGroup
-    );
-    if (duplicate) {
+    if (altarServers.some((s) => s.name.toLowerCase() === trimmed.toLowerCase() && s.group === userGroup)) {
       alert("This altar server is already recorded!");
       return;
     }
-
     const id = Date.now().toString();
-    const newList = [...altarServers, { id, name: trimmed, group: userGroup }];
-    newList.sort((a, b) => a.name.localeCompare(b.name));
-    setAltarServers(newList);
+    setAltarServers([...altarServers, { id, name: trimmed, group: userGroup }].sort((a, b) => a.name.localeCompare(b.name)));
     setNameInput("");
   };
 
@@ -153,23 +134,20 @@ export default function AttendanceTracker() {
     });
   };
 
-  const attendanceSummaryForAltarServer = (altarServerId) => {
-    let present = 0,
-      absent = 0,
-      late = 0,
-      total = 0;
-    for (const d of Object.keys(records)) {
-      const val = records[d][altarServerId];
+  const attendanceSummaryForAltarServer = (id) => {
+    let present = 0, absent = 0, late = 0, total = 0;
+    Object.keys(records).forEach((d) => {
+      const val = records[d][id];
       if (val === "present") present++;
       if (val === "absent") absent++;
       if (val === "late") late++;
       if (val === "present" || val === "absent" || val === "late") total++;
-    }
+    });
     return { present, absent, late, total };
   };
 
   // -----------------------
-  // Filtering
+  // Filtering by group & status
   // -----------------------
   const currentUser = localStorage.getItem("login_user");
   const userGroup = currentUser ? currentUser.split("_")[1] : "";
@@ -189,46 +167,20 @@ export default function AttendanceTracker() {
   if (!isLoggedIn) {
     return (
       <div className="flex justify-center items-center h-screen">
-        <form
-          onSubmit={handleLogin}
-          className="bg-[#e0f3ff] p-6 rounded-[1rem] shadow-md w-[32rem] h-[32.5rem]"
-        >
+        <form onSubmit={handleLogin} className="bg-[#e0f3ff] p-6 rounded-[1rem] shadow-md w-[32rem] h-[32.5rem]">
           <div className="flex justify-center items-center">
             <img src={logo} className="w-[10rem]" />
           </div>
-          <h2 className="text-xl font-bold text-center text-[#6a93ab]">
-            Welcome Back Leaders
-          </h2>
-          <p className="text-center mb-4 text-[#88a6b8]">
-            Track and manage today’s altar server attendance with ease.
-          </p>
+          <h2 className="text-xl font-bold text-center text-[#6a93ab]">Welcome Back Leaders</h2>
+          <p className="text-center mb-4 text-[#88a6b8]">Track and manage today’s altar server attendance with ease.</p>
           <label className="font-medium text-[#57768a]">Username</label>
-          <input
-            type="text"
-            placeholder="Enter Username"
-            className="w-full mb-3 mt-1 p-2 pl-4 border-2 border-[#6a93ab] rounded-[0.8rem] outline-none"
-            value={loginInput.username}
-            onChange={(e) =>
-              setLoginInput({ ...loginInput, username: e.target.value })
-            }
-          />
+          <input type="text" placeholder="Enter Username" className="w-full mb-3 mt-1 p-2 pl-4 border-2 border-[#6a93ab] rounded-[0.8rem] outline-none"
+            value={loginInput.username} onChange={(e) => setLoginInput({ ...loginInput, username: e.target.value })} />
           <label className="font-medium text-[#57768a]">Password</label>
-          <input
-            type="password"
-            placeholder="Enter Password"
-            className="w-full mb-3 mt-1 p-2 pl-4 border-2 border-[#6a93ab] rounded-[0.8rem] outline-none"
-            value={loginInput.password}
-            onChange={(e) =>
-              setLoginInput({ ...loginInput, password: e.target.value })
-            }
-          />
+          <input type="password" placeholder="Enter Password" className="w-full mb-3 mt-1 p-2 pl-4 border-2 border-[#6a93ab] rounded-[0.8rem] outline-none"
+            value={loginInput.password} onChange={(e) => setLoginInput({ ...loginInput, password: e.target.value })} />
           <div className="flex justify-center items-center">
-            <button
-              type="submit"
-              className="w-[20rem] mt-[0.5rem] bg-[#42aaff] text-white py-2 rounded-[0.8rem] cursor-pointer hover:bg-blue-700"
-            >
-              Log In
-            </button>
+            <button type="submit" className="w-[20rem] mt-[0.5rem] bg-[#42aaff] text-white py-2 rounded-[0.8rem] cursor-pointer hover:bg-blue-700">Log In</button>
           </div>
         </form>
       </div>
@@ -237,208 +189,87 @@ export default function AttendanceTracker() {
 
   return (
     <div className="flex justify-center items-center">
-      <div>
-        <div className="max-w-5xl mx-auto p-6">
-          <header className="mb-6 flex justify-between items-center">
-            <h1 className="text-2xl font-bold mb-1 text-[#11a9f0]">
-              SRP Altar Servers Attendance
-            </h1>
-            <button
-              onClick={handleLogout}
-              className="px-4 py-2 rounded bg-[#6d8391] cursor-pointer text-white hover:bg-[#317199]"
-            >
-              Logout
-            </button>
-          </header>
+      <div className="max-w-5xl mx-auto p-6">
+        <header className="mb-6 flex justify-between items-center">
+          <h1 className="text-2xl font-bold mb-1 text-[#11a9f0]">SRP Altar Servers Attendance</h1>
+          <button onClick={handleLogout} className="px-4 py-2 rounded bg-[#6d8391] cursor-pointer text-white hover:bg-[#317199]">Logout</button>
+        </header>
 
-          {/* Tracker Section */}
-          <section className="bg-white rounded-lg shadow p-4 mb-6">
-            <form onSubmit={addAltarServer} className="flex gap-2">
-              <input
-                className="flex-1 border rounded px-3 py-2"
-                placeholder="Add Altar Server Full Name and Press Enter"
-                value={nameInput}
-                onChange={(e) => setNameInput(e.target.value)}
-              />
-              <button
-                className="px-4 py-2 rounded bg-[#42aaff] text-white cursor-pointer hover:bg-blue-700"
-                onClick={addAltarServer}
-              >
-                Add
-              </button>
-            </form>
+        {/* Tracker Section */}
+        <section className="bg-white rounded-lg shadow p-4 mb-6">
+          <form onSubmit={addAltarServer} className="flex gap-2">
+            <input className="flex-1 border rounded px-3 py-2" placeholder="Add Altar Server Full Name and Press Enter"
+              value={nameInput} onChange={(e) => setNameInput(e.target.value)} />
+            <button className="px-4 py-2 rounded bg-[#42aaff] text-white cursor-pointer hover:bg-blue-700" onClick={addAltarServer}>Add</button>
+          </form>
+          <div className="mt-4 flex gap-2 flex-wrap">
+            <button className="px-3 py-1 rounded border cursor-pointer bg-[#42aaff] text-white hover:bg-blue-700" onClick={() => setAltarServers([])} title="Remove all altar servers">Remove all</button>
+          </div>
+        </section>
 
-            <div className="mt-4 flex gap-2 flex-wrap">
-              <button
-                className="px-3 py-1 rounded border cursor-pointer bg-[#42aaff] text-white hover:bg-blue-700"
-                onClick={() => setAltarServers([])}
-                title="Remove all altar servers"
-              >
-                Remove all
-              </button>
+        {/* Attendance Table */}
+        <section className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-white rounded-lg shadow p-4">
+            <label className="block text-sm font-medium">Date</label>
+            <input type="date" className="mt-1 p-2 border rounded w-full" value={date} onChange={(e) => setDate(e.target.value)} />
+            <div className="mt-4 flex gap-2">
+              <button className="px-3 py-1 rounded border bg-[#30b017] text-white cursor-pointer hover:bg-[#48de2a]" onClick={() => markAll("present")}>Mark all Present</button>
+              <button className="px-3 py-1 rounded border bg-[#e63c3c] text-white cursor-pointer hover:bg-[#f56464]" onClick={() => markAll("absent")}>Mark all Absent</button>
+              <button className="px-3 py-1 rounded bg-[#42aaff] text-white cursor-pointer hover:bg-blue-600" onClick={clearDate}>Clear Date</button>
             </div>
-          </section>
-
-          <section className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-white rounded-lg shadow p-4">
-              <label className="block text-sm font-medium">Date</label>
-              <input
-                type="date"
-                className="mt-1 p-2 border rounded w-full"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-              />
-
-              <div className="mt-4 flex gap-2">
-                <button
-                  className="px-3 py-1 rounded border bg-[#30b017] text-white cursor-pointer hover:bg-[#48de2a]"
-                  onClick={() => markAll("present")}
-                >
-                  Mark all Present
-                </button>
-                <button
-                  className="px-3 py-1 rounded border bg-[#e63c3c] text-white cursor-pointer hover:bg-[#f56464]"
-                  onClick={() => markAll("absent")}
-                >
-                  Mark all Absent
-                </button>
-                <button
-                  className="px-3 py-1 rounded bg-[#42aaff] text-white cursor-pointer hover:bg-blue-600"
-                  onClick={clearDate}
-                >
-                  Clear Date
-                </button>
-              </div>
-
-              <div className="mt-4">
-                <label className="block text-sm font-medium">Filter</label>
-                <select
-                  className="mt-1 p-2 border rounded w-full"
-                  value={filter}
-                  onChange={(e) => setFilter(e.target.value)}
-                >
-                  <option value="all">All</option>
-                  <option value="present">Present</option>
-                  <option value="absent">Absent</option>
-                  <option value="late">Late</option>
-                </select>
-              </div>
+            <div className="mt-4">
+              <label className="block text-sm font-medium">Filter</label>
+              <select className="mt-1 p-2 border rounded w-full" value={filter} onChange={(e) => setFilter(e.target.value)}>
+                <option value="all">All</option>
+                <option value="present">Present</option>
+                <option value="absent">Absent</option>
+                <option value="late">Late</option>
+              </select>
             </div>
+          </div>
 
-            <div className="md:col-span-2 bg-white rounded-lg shadow p-4">
-              <h2 className="font-semibold mb-2">
-                Altar Servers ({filteredAltarServers.length})
-              </h2>
-              <div className="overflow-auto">
-                <table className="min-w-full text-left">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="py-2">Name</th>
-                      <th className="py-2 px-2">Date ({date})</th>
-                      <th className="py-2 px-2">Summary</th>
-                      <th className="py-2 px-2">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredAltarServers.map((s) => {
-                      const val = records[date] && records[date][s.id];
-                      return (
-                        <tr key={s.id} className="border-b hover:bg-gray-50">
-                          <td className="py-2 px-2">{s.name}</td>
-                          <td className="py-2 px-1">
-                            <div className="inline-flex gap-2">
-                              <button
-                                className={`px-2 py-1 rounded border hover:bg-green-100 cursor-pointer ${
-                                  val === "present" ? "bg-green-100" : ""
-                                }`}
-                                onClick={() =>
-                                  setRecords((r) => ({
-                                    ...r,
-                                    [date]: {
-                                      ...(r[date] || {}),
-                                      [s.id]: "present",
-                                    },
-                                  }))
-                                }
-                              >
-                                Present
-                              </button>
-                              <button
-                                className={`px-2 py-1 rounded border hover:bg-red-100 cursor-pointer ${
-                                  val === "absent" ? "bg-red-100" : ""
-                                }`}
-                                onClick={() =>
-                                  setRecords((r) => ({
-                                    ...r,
-                                    [date]: {
-                                      ...(r[date] || {}),
-                                      [s.id]: "absent",
-                                    },
-                                  }))
-                                }
-                              >
-                                Absent
-                              </button>
-                              <button
-                                className={`px-2 py-1 rounded border hover:bg-yellow-100 cursor-pointer ${
-                                  val === "late" ? "bg-yellow-100" : ""
-                                }`}
-                                onClick={() =>
-                                  setRecords((r) => ({
-                                    ...r,
-                                    [date]: {
-                                      ...(r[date] || {}),
-                                      [s.id]: "late",
-                                    },
-                                  }))
-                                }
-                              >
-                                Late
-                              </button>
-                            </div>
-                          </td>
-                          <td className="py-2 pl-2">
-                            {(() => {
-                              const sum = attendanceSummaryForAltarServer(s.id);
-                              return (
-                                <div className="text-sm text-gray-700">
-                                  {sum.present} Present • {sum.absent} Absent •{" "}
-                                  {sum.late} Late • {sum.total} Recorded
-                                </div>
-                              );
-                            })()}
-                          </td>
-                          <td className="py-2 px-2">
-                            <button
-                              className="px-2 py-1 rounded border text-sm cursor-pointer bg-[#42aaff] text-white hover:bg-blue-600"
-                              onClick={() => removeAltarServer(s.id)}
-                            >
-                              Remove
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    {filteredAltarServers.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={4}
-                          className="py-4 text-center text-gray-500"
-                        >
-                          No Altar Servers yet. Add one above.
+          <div className="md:col-span-2 bg-white rounded-lg shadow p-4">
+            <h2 className="font-semibold mb-2">Altar Servers ({filteredAltarServers.length})</h2>
+            <div className="overflow-auto">
+              <table className="min-w-full text-left">
+                <thead>
+                  <tr className="border-b">
+                    <th className="py-2">Name</th>
+                    <th className="py-2 px-2">Date ({date})</th>
+                    <th className="py-2 px-2">Summary</th>
+                    <th className="py-2 px-2">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredAltarServers.map((s) => {
+                    const val = records[date] && records[date][s.id];
+                    return (
+                      <tr key={s.id} className="border-b hover:bg-gray-50">
+                        <td className="py-2 px-2">{s.name}</td>
+                        <td className="py-2 px-1">
+                          <div className="inline-flex gap-2">
+                            <button className={`px-2 py-1 rounded border hover:bg-green-100 cursor-pointer ${val === "present" ? "bg-green-100" : ""}`} onClick={() => setRecords(r => ({ ...r, [date]: { ...(r[date] || {}), [s.id]: "present" } }))}>Present</button>
+                            <button className={`px-2 py-1 rounded border hover:bg-red-100 cursor-pointer ${val === "absent" ? "bg-red-100" : ""}`} onClick={() => setRecords(r => ({ ...r, [date]: { ...(r[date] || {}), [s.id]: "absent" } }))}>Absent</button>
+                            <button className={`px-2 py-1 rounded border hover:bg-yellow-100 cursor-pointer ${val === "late" ? "bg-yellow-100" : ""}`} onClick={() => setRecords(r => ({ ...r, [date]: { ...(r[date] || {}), [s.id]: "late" } }))}>Late</button>
+                          </div>
+                        </td>
+                        <td className="py-2 pl-2">
+                          {(() => { const sum = attendanceSummaryForAltarServer(s.id); return <div className="text-sm text-gray-700">{sum.present} Present • {sum.absent} Absent • {sum.late} Late • {sum.total} Recorded</div>; })()}
+                        </td>
+                        <td className="py-2 px-2">
+                          <button className="px-2 py-1 rounded border text-sm cursor-pointer bg-[#42aaff] text-white hover:bg-blue-600" onClick={() => removeAltarServer(s.id)}>Remove</button>
                         </td>
                       </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                    );
+                  })}
+                  {filteredAltarServers.length === 0 && <tr><td colSpan={4} className="py-4 text-center text-gray-500">No Altar Servers yet. Add one above.</td></tr>}
+                </tbody>
+              </table>
             </div>
-          </section>
+          </div>
+        </section>
 
-          <footer className="text-sm text-white mt-6">
-            SAN ROQUE PARISH ALTAR SERVERS ATTENDANCE
-          </footer>
-        </div>
+        <footer className="text-sm text-white mt-6">SAN ROQUE PARISH ALTAR SERVERS ATTENDANCE</footer>
       </div>
     </div>
   );
