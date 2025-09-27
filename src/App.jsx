@@ -2,7 +2,6 @@ import React, { useEffect, useState } from "react";
 import logo from "./assets/logo.png";
 import { loadAttendanceData, saveAttendanceData } from "./syncWithSupabase";
 
-const STORAGE_KEY = "attendance_tracker_v1";
 const LOGIN_KEY = "attendance_login_v1";
 
 const USERS = [
@@ -21,11 +20,9 @@ function formatDateISO(d) {
 }
 
 export default function AttendanceTracker() {
-  // login state
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [loginInput, setLoginInput] = useState({ username: "", password: "" });
 
-  // tracker states
   const [altarServers, setAltarServers] = useState([]);
   const [records, setRecords] = useState({});
   const [nameInput, setNameInput] = useState("");
@@ -33,7 +30,7 @@ export default function AttendanceTracker() {
   const [filter, setFilter] = useState("all");
 
   // -----------------------
-  // Check login from localStorage
+  // Check login
   // -----------------------
   useEffect(() => {
     const loggedIn = localStorage.getItem(LOGIN_KEY);
@@ -41,11 +38,10 @@ export default function AttendanceTracker() {
   }, []);
 
   // -----------------------
-  // Load data from Supabase after login
+  // Load Supabase data
   // -----------------------
   useEffect(() => {
     if (!isLoggedIn) return;
-
     loadAttendanceData().then(({ altarServers, records }) => {
       const sortedServers = (altarServers || []).sort((a, b) =>
         a.name.localeCompare(b.name)
@@ -56,15 +52,7 @@ export default function AttendanceTracker() {
   }, [isLoggedIn]);
 
   // -----------------------
-  // Save data to Supabase whenever altarServers or records change
-  // -----------------------
-  useEffect(() => {
-    if (!isLoggedIn) return;
-    saveAttendanceData({ altarServers, records });
-  }, [altarServers, records, isLoggedIn]);
-
-  // -----------------------
-  // Login / Logout handlers
+  // Login / Logout
   // -----------------------
   const handleLogin = (e) => {
     e.preventDefault();
@@ -88,8 +76,13 @@ export default function AttendanceTracker() {
   };
 
   // -----------------------
-  // Attendance logic
+  // Attendance logic with immediate Supabase sync
   // -----------------------
+  const updateRecords = (newRecords) => {
+    setRecords(newRecords);
+    saveAttendanceData({ altarServers, records: newRecords });
+  };
+
   const addAltarServer = (e) => {
     e?.preventDefault();
     const trimmed = nameInput.trim();
@@ -111,38 +104,43 @@ export default function AttendanceTracker() {
     const newList = [...altarServers, { id, name: trimmed, group: userGroup }];
     newList.sort((a, b) => a.name.localeCompare(b.name));
     setAltarServers(newList);
+    saveAttendanceData({ altarServers: newList, records });
     setNameInput("");
   };
 
   const removeAltarServer = (id) => {
-    setAltarServers((s) => s.filter((x) => x.id !== id));
-    setRecords((r) => {
-      const copy = { ...r };
-      for (const d of Object.keys(copy)) {
-        if (copy[d] && copy[d][id]) {
-          const rec = { ...copy[d] };
-          delete rec[id];
-          copy[d] = rec;
-        }
+    const newServers = altarServers.filter((x) => x.id !== id);
+    const newRecords = { ...records };
+    for (const d of Object.keys(newRecords)) {
+      if (newRecords[d] && newRecords[d][id]) {
+        const rec = { ...newRecords[d] };
+        delete rec[id];
+        newRecords[d] = rec;
       }
-      return copy;
-    });
+    }
+    setAltarServers(newServers);
+    updateRecords(newRecords);
   };
 
   const markAll = (status) => {
-    setRecords((r) => {
-      const row = {};
-      filteredAltarServers.forEach((s) => (row[s.id] = status));
-      return { ...r, [date]: row };
-    });
+    const row = {};
+    filteredAltarServers.forEach((s) => (row[s.id] = status));
+    const newRecords = { ...records, [date]: row };
+    updateRecords(newRecords);
+  };
+
+  const markSingle = (id, status) => {
+    const newRecords = {
+      ...records,
+      [date]: { ...(records[date] || {}), [id]: status },
+    };
+    updateRecords(newRecords);
   };
 
   const clearDate = () => {
-    setRecords((r) => {
-      const copy = { ...r };
-      delete copy[date];
-      return copy;
-    });
+    const newRecords = { ...records };
+    delete newRecords[date];
+    updateRecords(newRecords);
   };
 
   const attendanceSummaryForAltarServer = (altarServerId) => {
@@ -151,7 +149,7 @@ export default function AttendanceTracker() {
       late = 0,
       total = 0;
     for (const d of Object.keys(records)) {
-      const val = (records[d] || {})[altarServerId];
+      const val = records[d][altarServerId];
       if (val === "present") present++;
       if (val === "absent") absent++;
       if (val === "late") late++;
@@ -167,8 +165,8 @@ export default function AttendanceTracker() {
   const userGroup = currentUser ? currentUser.split("_")[1] : "";
   const groupFilteredServers = altarServers.filter((s) => s.group === userGroup);
   const filteredAltarServers = groupFilteredServers.filter((s) => {
-    const val = (records[date] || {})[s.id]; // <-- FIXED
     if (filter === "all") return true;
+    const val = records[date] && records[date][s.id];
     if (filter === "present") return val === "present";
     if (filter === "late") return val === "late";
     if (filter === "absent") return val === "absent" || !val;
@@ -263,7 +261,10 @@ export default function AttendanceTracker() {
             <div className="mt-4 flex gap-2 flex-wrap">
               <button
                 className="px-3 py-1 rounded border cursor-pointer bg-[#42aaff] text-white hover:bg-blue-700"
-                onClick={() => setAltarServers([])}
+                onClick={() => {
+                  setAltarServers([]);
+                  saveAttendanceData({ altarServers: [], records });
+                }}
                 title="Remove all altar servers"
               >
                 Remove all
@@ -333,7 +334,7 @@ export default function AttendanceTracker() {
                   </thead>
                   <tbody>
                     {filteredAltarServers.map((s) => {
-                      const val = (records[date] || {})[s.id] || ""; // <-- FIXED
+                      const val = records[date] && records[date][s.id];
                       return (
                         <tr key={s.id} className="border-b hover:bg-gray-50">
                           <td className="py-2 px-2">{s.name}</td>
@@ -343,15 +344,7 @@ export default function AttendanceTracker() {
                                 className={`px-2 py-1 rounded border hover:bg-green-100 cursor-pointer ${
                                   val === "present" ? "bg-green-100" : ""
                                 }`}
-                                onClick={() =>
-                                  setRecords((r) => ({
-                                    ...r,
-                                    [date]: {
-                                      ...(r[date] || {}),
-                                      [s.id]: "present",
-                                    },
-                                  }))
-                                }
+                                onClick={() => markSingle(s.id, "present")}
                               >
                                 Present
                               </button>
@@ -359,15 +352,7 @@ export default function AttendanceTracker() {
                                 className={`px-2 py-1 rounded border hover:bg-red-100 cursor-pointer ${
                                   val === "absent" ? "bg-red-100" : ""
                                 }`}
-                                onClick={() =>
-                                  setRecords((r) => ({
-                                    ...r,
-                                    [date]: {
-                                      ...(r[date] || {}),
-                                      [s.id]: "absent",
-                                    },
-                                  }))
-                                }
+                                onClick={() => markSingle(s.id, "absent")}
                               >
                                 Absent
                               </button>
@@ -375,15 +360,7 @@ export default function AttendanceTracker() {
                                 className={`px-2 py-1 rounded border hover:bg-yellow-100 cursor-pointer ${
                                   val === "late" ? "bg-yellow-100" : ""
                                 }`}
-                                onClick={() =>
-                                  setRecords((r) => ({
-                                    ...r,
-                                    [date]: {
-                                      ...(r[date] || {}),
-                                      [s.id]: "late",
-                                    },
-                                  }))
-                                }
+                                onClick={() => markSingle(s.id, "late")}
                               >
                                 Late
                               </button>
