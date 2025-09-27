@@ -4,7 +4,6 @@ import logo from "./assets/logo.png";
 const STORAGE_KEY = "attendance_tracker_v1";
 const LOGIN_KEY = "attendance_login_v1";
 
-// demo login account (change to your own)
 const USERS = [
   { username: "leader_4pm", password: "leader4PM" },
   { username: "leader_5am", password: "leader5AM" },
@@ -40,23 +39,25 @@ export default function AttendanceTracker() {
 
   // handle login
   const handleLogin = (e) => {
-  e.preventDefault();
-  const found = USERS.find(
-    (u) =>
-      u.username === loginInput.username && u.password === loginInput.password
-  );
-  if (found) {
-    setIsLoggedIn(true);
-    localStorage.setItem(LOGIN_KEY, "true");
-  } else {
-    alert("Invalid username or password!");
-  }
-};
+    e.preventDefault();
+    const found = USERS.find(
+      (u) =>
+        u.username === loginInput.username && u.password === loginInput.password
+    );
+    if (found) {
+      setIsLoggedIn(true);
+      localStorage.setItem(LOGIN_KEY, "true");
+      localStorage.setItem("login_user", found.username); // ✅ store logged-in user
+    } else {
+      alert("Invalid username or password!");
+    }
+  };
 
   // handle logout
   const handleLogout = () => {
     setIsLoggedIn(false);
     localStorage.removeItem(LOGIN_KEY);
+    localStorage.removeItem("login_user");
   };
 
   // load tracker data
@@ -90,8 +91,12 @@ export default function AttendanceTracker() {
     const trimmed = nameInput.trim();
     if (!trimmed) return;
 
+    const currentUser = localStorage.getItem("login_user");
+    const userGroup = currentUser ? currentUser.split("_")[1] : ""; // e.g. "4pm"
+
     const duplicate = altarServers.some(
-      (s) => s.name.toLowerCase() === trimmed.toLowerCase()
+      (s) =>
+        s.name.toLowerCase() === trimmed.toLowerCase() && s.group === userGroup
     );
     if (duplicate) {
       alert("This altar server is already recorded!");
@@ -99,7 +104,7 @@ export default function AttendanceTracker() {
     }
 
     const id = Date.now().toString();
-    const newList = [...altarServers, { id, name: trimmed }];
+    const newList = [...altarServers, { id, name: trimmed, group: userGroup }];
     newList.sort((a, b) => a.name.localeCompare(b.name));
     setAltarServers(newList);
     setNameInput("");
@@ -123,7 +128,7 @@ export default function AttendanceTracker() {
   const markAll = (status) => {
     setRecords((r) => {
       const row = {};
-      altarServers.forEach((s) => (row[s.id] = status));
+      filteredAltarServers.forEach((s) => (row[s.id] = status));
       return { ...r, [date]: row };
     });
   };
@@ -151,7 +156,13 @@ export default function AttendanceTracker() {
     return { present, absent, late, total };
   };
 
-  const filteredAltarServers = altarServers.filter((s) => {
+  // filtering with user restriction
+  const currentUser = localStorage.getItem("login_user");
+  const userGroup = currentUser ? currentUser.split("_")[1] : "";
+
+  const groupFilteredServers = altarServers.filter((s) => s.group === userGroup);
+
+  const filteredAltarServers = groupFilteredServers.filter((s) => {
     if (filter === "all") return true;
     const val = records[date] && records[date][s.id];
     if (filter === "present") return val === "present";
@@ -171,9 +182,13 @@ export default function AttendanceTracker() {
           <div className="flex justify-center items-center">
             <img src={logo} className="w-[10rem]" />
           </div>
-          <h2 className="text-xl font-bold text-center text-[#6a93ab]">Welcome Back Leaders</h2>
-          <p className="text-center mb-4 text-[#88a6b8]">Track and manage today’s altar server attendance with ease.</p>
-          <label htmlFor="Username" className="font-medium text-[#57768a]">Username</label>
+          <h2 className="text-xl font-bold text-center text-[#6a93ab]">
+            Welcome Back Leaders
+          </h2>
+          <p className="text-center mb-4 text-[#88a6b8]">
+            Track and manage today’s altar server attendance with ease.
+          </p>
+          <label className="font-medium text-[#57768a]">Username</label>
           <input
             type="text"
             placeholder="Enter Username"
@@ -183,9 +198,9 @@ export default function AttendanceTracker() {
               setLoginInput({ ...loginInput, username: e.target.value })
             }
           />
-          <label htmlFor="Password" className="font-medium text-[#57768a]">Password</label>
+          <label className="font-medium text-[#57768a]">Password</label>
           <input
-            type="text"
+            type="password"
             placeholder="Enter Password"
             className="w-full mb-3 mt-1 p-2 pl-4 border-2 border-[#6a93ab] rounded-[0.8rem] outline-none"
             value={loginInput.password}
@@ -223,7 +238,7 @@ export default function AttendanceTracker() {
             </button>
           </header>
 
-          {/* --- your tracker (unchanged design) --- */}
+          {/* Tracker Section */}
           <section className="bg-white rounded-lg shadow p-4 mb-6">
             <form onSubmit={addAltarServer} className="flex gap-2">
               <input
@@ -299,7 +314,7 @@ export default function AttendanceTracker() {
 
             <div className="md:col-span-2 bg-white rounded-lg shadow p-4">
               <h2 className="font-semibold mb-2">
-                Altar Servers ({altarServers.length})
+                Altar Servers ({filteredAltarServers.length})
               </h2>
               <div className="overflow-auto">
                 <table className="min-w-full text-left">
@@ -320,8 +335,9 @@ export default function AttendanceTracker() {
                           <td className="py-2 px-1">
                             <div className="inline-flex gap-2">
                               <button
-                                className={`px-2 py-1 rounded border hover:bg-green-100 cursor-pointer ${val === "present" ? "bg-green-100" : ""
-                                  }`}
+                                className={`px-2 py-1 rounded border hover:bg-green-100 cursor-pointer ${
+                                  val === "present" ? "bg-green-100" : ""
+                                }`}
                                 onClick={() =>
                                   setRecords((r) => ({
                                     ...r,
@@ -335,8 +351,9 @@ export default function AttendanceTracker() {
                                 Present
                               </button>
                               <button
-                                className={`px-2 py-1 rounded border hover:bg-red-100 cursor-pointer ${val === "absent" ? "bg-red-100" : ""
-                                  }`}
+                                className={`px-2 py-1 rounded border hover:bg-red-100 cursor-pointer ${
+                                  val === "absent" ? "bg-red-100" : ""
+                                }`}
                                 onClick={() =>
                                   setRecords((r) => ({
                                     ...r,
@@ -350,8 +367,9 @@ export default function AttendanceTracker() {
                                 Absent
                               </button>
                               <button
-                                className={`px-2 py-1 rounded border hover:bg-yellow-100 cursor-pointer ${val === "late" ? "bg-yellow-100" : ""
-                                  }`}
+                                className={`px-2 py-1 rounded border hover:bg-yellow-100 cursor-pointer ${
+                                  val === "late" ? "bg-yellow-100" : ""
+                                }`}
                                 onClick={() =>
                                   setRecords((r) => ({
                                     ...r,
@@ -388,7 +406,7 @@ export default function AttendanceTracker() {
                         </tr>
                       );
                     })}
-                    {altarServers.length === 0 && (
+                    {filteredAltarServers.length === 0 && (
                       <tr>
                         <td
                           colSpan={4}
