@@ -1,53 +1,38 @@
-// syncWithSupabase.js
-import { supabase } from "./supabaseClient";
+// supabaseClient.js
+import { createClient } from "@supabase/supabase-js";
 
-// save tracker data to Supabase
-export async function saveAttendanceData({ altarServers, records }) {
-  try {
-    // Upsert altar servers
-    for (const server of altarServers) {
-      await supabase
-        .from("altar_servers")
-        .upsert({ id: server.id, name: server.name, group_name: server.group });
-    }
+// replace with your Supabase project URL & anon key
+const SUPABASE_URL = "https://ecwefjruggdvnffnlfex.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVjd2VmanJ1Z2dkdm5mZm5sZmV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg5NzY0MjMsImV4cCI6MjA3NDU1MjQyM30.q46Q-2F9H1LB0e87GM6VN6bMbensf5NDMS0geYakwtM";
 
-    // Upsert attendance records
-    for (const [date, dayRecords] of Object.entries(records)) {
-      for (const [server_id, status] of Object.entries(dayRecords)) {
-        await supabase
-          .from("attendance_records")
-          .upsert({ server_id, date, status });
-      }
-    }
-  } catch (error) {
-    console.error("Supabase save error:", error);
-  }
-}
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// load tracker data from Supabase
+const ATTENDANCE_ID = 1; // single row to persist all data
+
 export async function loadAttendanceData() {
-  try {
-    const { data: servers, error: serversErr } = await supabase
-      .from("altar_servers")
-      .select("*");
-    if (serversErr) throw serversErr;
+  const { data, error } = await supabase
+    .from("attendance")
+    .select("*")
+    .eq("id", ATTENDANCE_ID)
+    .single();
 
-    const { data: recordsData, error: recordsErr } = await supabase
-      .from("attendance_records")
-      .select("*");
-    if (recordsErr) throw recordsErr;
-
-    const altarServers = servers || [];
-    const records = {};
-
-    for (const rec of recordsData || []) {
-      if (!records[rec.date]) records[rec.date] = {};
-      records[rec.date][rec.server_id] = rec.status;
-    }
-
-    return { altarServers, records };
-  } catch (error) {
-    console.error("Supabase load error:", error);
+  if (error) {
+    console.error("Error loading attendance data:", error);
     return { altarServers: [], records: {} };
   }
+
+  return {
+    altarServers: data?.altarServers || [],
+    records: data?.records || {},
+  };
+}
+
+export async function saveAttendanceData({ altarServers, records }) {
+  const { error } = await supabase.from("attendance").upsert({
+    id: ATTENDANCE_ID,
+    altarServers,
+    records,
+  });
+
+  if (error) console.error("Error saving attendance data:", error);
 }

@@ -26,46 +26,39 @@ export default function AttendanceTracker() {
   const [nameInput, setNameInput] = useState("");
   const [date, setDate] = useState(formatDateISO(new Date()));
   const [filter, setFilter] = useState("all");
+  const [loading, setLoading] = useState(true);
 
-  // -----------------------
-  // Login check
-  // -----------------------
+  // check login from localStorage
   useEffect(() => {
     const loggedIn = localStorage.getItem(LOGIN_KEY);
     if (loggedIn === "true") setIsLoggedIn(true);
   }, []);
 
-  // -----------------------
-  // Load Supabase data ONCE after login
-  // -----------------------
+  // load Supabase data after login
   useEffect(() => {
     if (!isLoggedIn) return;
 
-    async function fetchData() {
-      try {
-        const { altarServers: servers, records: recs } = await loadAttendanceData();
-        const sortedServers = (servers || []).sort((a, b) => a.name.localeCompare(b.name));
-        setAltarServers(sortedServers);
-        setRecords(recs || {});
-      } catch (err) {
-        console.error("Failed to load attendance:", err);
-      }
-    }
+    const fetchData = async () => {
+      setLoading(true);
+      const { altarServers, records } = await loadAttendanceData();
+      setAltarServers(altarServers || []);
+      setRecords(records || {});
+      setLoading(false);
+    };
 
     fetchData();
   }, [isLoggedIn]);
 
-  // -----------------------
-  // Save to Supabase whenever data changes
-  // -----------------------
+  // save any change immediately to Supabase
   useEffect(() => {
     if (!isLoggedIn) return;
-    saveAttendanceData({ altarServers, records }).catch(console.error);
+    const saveData = async () => {
+      await saveAttendanceData({ altarServers, records });
+    };
+    saveData();
   }, [altarServers, records, isLoggedIn]);
 
-  // -----------------------
-  // Login / Logout
-  // -----------------------
+  // login/logout handlers
   const handleLogin = (e) => {
     e.preventDefault();
     const found = USERS.find(
@@ -76,7 +69,9 @@ export default function AttendanceTracker() {
       setIsLoggedIn(true);
       localStorage.setItem(LOGIN_KEY, "true");
       localStorage.setItem("login_user", found.username);
-    } else alert("Invalid username or password!");
+    } else {
+      alert("Invalid username or password!");
+    }
   };
 
   const handleLogout = () => {
@@ -85,21 +80,28 @@ export default function AttendanceTracker() {
     localStorage.removeItem("login_user");
   };
 
-  // -----------------------
-  // Attendance logic
-  // -----------------------
+  // attendance logic
   const addAltarServer = (e) => {
     e?.preventDefault();
     const trimmed = nameInput.trim();
     if (!trimmed) return;
+
     const currentUser = localStorage.getItem("login_user");
     const userGroup = currentUser ? currentUser.split("_")[1] : "";
-    if (altarServers.some((s) => s.name.toLowerCase() === trimmed.toLowerCase() && s.group === userGroup)) {
+
+    const duplicate = altarServers.some(
+      (s) =>
+        s.name.toLowerCase() === trimmed.toLowerCase() && s.group === userGroup
+    );
+    if (duplicate) {
       alert("This altar server is already recorded!");
       return;
     }
+
     const id = Date.now().toString();
-    setAltarServers([...altarServers, { id, name: trimmed, group: userGroup }].sort((a, b) => a.name.localeCompare(b.name)));
+    const newList = [...altarServers, { id, name: trimmed, group: userGroup }];
+    newList.sort((a, b) => a.name.localeCompare(b.name));
+    setAltarServers(newList);
     setNameInput("");
   };
 
@@ -134,21 +136,21 @@ export default function AttendanceTracker() {
     });
   };
 
-  const attendanceSummaryForAltarServer = (id) => {
-    let present = 0, absent = 0, late = 0, total = 0;
-    Object.keys(records).forEach((d) => {
-      const val = records[d][id];
+  const attendanceSummaryForAltarServer = (altarServerId) => {
+    let present = 0,
+      absent = 0,
+      late = 0,
+      total = 0;
+    for (const d of Object.keys(records)) {
+      const val = records[d][altarServerId];
       if (val === "present") present++;
       if (val === "absent") absent++;
       if (val === "late") late++;
       if (val === "present" || val === "absent" || val === "late") total++;
-    });
+    }
     return { present, absent, late, total };
   };
 
-  // -----------------------
-  // Filtering by group & status
-  // -----------------------
   const currentUser = localStorage.getItem("login_user");
   const userGroup = currentUser ? currentUser.split("_")[1] : "";
   const groupFilteredServers = altarServers.filter((s) => s.group === userGroup);
@@ -161,31 +163,56 @@ export default function AttendanceTracker() {
     return true;
   });
 
-  // -----------------------
-  // Render
-  // -----------------------
   if (!isLoggedIn) {
     return (
       <div className="flex justify-center items-center h-screen">
-        <form onSubmit={handleLogin} className="bg-[#e0f3ff] p-6 rounded-[1rem] shadow-md w-[32rem] h-[32.5rem]">
+        <form
+          onSubmit={handleLogin}
+          className="bg-[#e0f3ff] p-6 rounded-[1rem] shadow-md w-[32rem] h-[32.5rem]"
+        >
           <div className="flex justify-center items-center">
             <img src={logo} className="w-[10rem]" />
           </div>
-          <h2 className="text-xl font-bold text-center text-[#6a93ab]">Welcome Back Leaders</h2>
-          <p className="text-center mb-4 text-[#88a6b8]">Track and manage today’s altar server attendance with ease.</p>
+          <h2 className="text-xl font-bold text-center text-[#6a93ab]">
+            Welcome Back Leaders
+          </h2>
+          <p className="text-center mb-4 text-[#88a6b8]">
+            Track and manage today’s altar server attendance with ease.
+          </p>
           <label className="font-medium text-[#57768a]">Username</label>
-          <input type="text" placeholder="Enter Username" className="w-full mb-3 mt-1 p-2 pl-4 border-2 border-[#6a93ab] rounded-[0.8rem] outline-none"
-            value={loginInput.username} onChange={(e) => setLoginInput({ ...loginInput, username: e.target.value })} />
+          <input
+            type="text"
+            placeholder="Enter Username"
+            className="w-full mb-3 mt-1 p-2 pl-4 border-2 border-[#6a93ab] rounded-[0.8rem] outline-none"
+            value={loginInput.username}
+            onChange={(e) =>
+              setLoginInput({ ...loginInput, username: e.target.value })
+            }
+          />
           <label className="font-medium text-[#57768a]">Password</label>
-          <input type="password" placeholder="Enter Password" className="w-full mb-3 mt-1 p-2 pl-4 border-2 border-[#6a93ab] rounded-[0.8rem] outline-none"
-            value={loginInput.password} onChange={(e) => setLoginInput({ ...loginInput, password: e.target.value })} />
+          <input
+            type="password"
+            placeholder="Enter Password"
+            className="w-full mb-3 mt-1 p-2 pl-4 border-2 border-[#6a93ab] rounded-[0.8rem] outline-none"
+            value={loginInput.password}
+            onChange={(e) =>
+              setLoginInput({ ...loginInput, password: e.target.value })
+            }
+          />
           <div className="flex justify-center items-center">
-            <button type="submit" className="w-[20rem] mt-[0.5rem] bg-[#42aaff] text-white py-2 rounded-[0.8rem] cursor-pointer hover:bg-blue-700">Log In</button>
+            <button
+              type="submit"
+              className="w-[20rem] mt-[0.5rem] bg-[#42aaff] text-white py-2 rounded-[0.8rem] cursor-pointer hover:bg-blue-700"
+            >
+              Log In
+            </button>
           </div>
         </form>
       </div>
     );
   }
+
+  if (loading) return <div className="flex justify-center items-center h-screen">Loading...</div>;
 
   return (
     <div className="flex justify-center items-center">
