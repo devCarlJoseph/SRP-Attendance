@@ -47,7 +47,6 @@ export default function AttendanceTracker() {
     if (!isLoggedIn) return;
 
     loadAttendanceData().then(({ altarServers, records }) => {
-      // sort servers by name
       const sortedServers = (altarServers || []).sort((a, b) =>
         a.name.localeCompare(b.name)
       );
@@ -61,35 +60,7 @@ export default function AttendanceTracker() {
   // -----------------------
   useEffect(() => {
     if (!isLoggedIn) return;
-
     saveAttendanceData({ altarServers, records });
-  }, [altarServers, records, isLoggedIn]);
-
-  // -----------------------
-  // Load tracker data from localStorage (optional, can co-exist with Supabase)
-  // -----------------------
-  useEffect(() => {
-    if (!isLoggedIn) return;
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        const sortedServers = (parsed.altarServers || []).sort((a, b) =>
-          a.name.localeCompare(b.name)
-        );
-        setAltarServers(sortedServers);
-        setRecords(parsed.records || {});
-      }
-    } catch (e) {
-      console.error("Failed to load attendance from storage", e);
-    }
-  }, [isLoggedIn]);
-
-  // Save to localStorage whenever data changes
-  useEffect(() => {
-    if (!isLoggedIn) return;
-    const payload = { altarServers, records };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   }, [altarServers, records, isLoggedIn]);
 
   // -----------------------
@@ -180,7 +151,7 @@ export default function AttendanceTracker() {
       late = 0,
       total = 0;
     for (const d of Object.keys(records)) {
-      const val = records[d][altarServerId];
+      const val = (records[d] || {})[altarServerId];
       if (val === "present") present++;
       if (val === "absent") absent++;
       if (val === "late") late++;
@@ -196,8 +167,8 @@ export default function AttendanceTracker() {
   const userGroup = currentUser ? currentUser.split("_")[1] : "";
   const groupFilteredServers = altarServers.filter((s) => s.group === userGroup);
   const filteredAltarServers = groupFilteredServers.filter((s) => {
+    const val = (records[date] || {})[s.id]; // <-- FIXED
     if (filter === "all") return true;
-    const val = records[date] && records[date][s.id];
     if (filter === "present") return val === "present";
     if (filter === "late") return val === "late";
     if (filter === "absent") return val === "absent" || !val;
@@ -362,7 +333,7 @@ export default function AttendanceTracker() {
                   </thead>
                   <tbody>
                     {filteredAltarServers.map((s) => {
-                      const val = records[date] && records[date][s.id];
+                      const val = (records[date] || {})[s.id] || ""; // <-- FIXED
                       return (
                         <tr key={s.id} className="border-b hover:bg-gray-50">
                           <td className="py-2 px-2">{s.name}</td>
