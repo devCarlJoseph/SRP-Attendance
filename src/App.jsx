@@ -1,7 +1,6 @@
-// AttendanceTracker.jsx
 import React, { useEffect, useState } from "react";
 import logo from "./assets/logo.png";
-import { supabase } from "./syncWithSupabase"; // ✅ corrected import
+import { supabase } from "./syncWithSupabase"; 
 
 const LOGIN_KEY = "attendance_login_v1";
 const STORAGE_KEY = "attendance_tracker_v1";
@@ -22,7 +21,6 @@ function formatDateISO(d) {
 async function loadAttendanceData() {
   const userGroup = localStorage.getItem("login_group");
 
-  // First get servers for this group
   const { data: altarServers, error: serversError } = await supabase
     .from("altar_servers")
     .select("*")
@@ -36,7 +34,6 @@ async function loadAttendanceData() {
   if (altarServers?.length) {
     const ids = altarServers.map((s) => s.id);
 
-    // ✅ Now fetch attendance ONLY for these server IDs
     const { data: attendanceRows, error: recordsError } = await supabase
       .from("attendance_records")
       .select("*")
@@ -53,11 +50,9 @@ async function loadAttendanceData() {
   return { altarServers: altarServers || [], records };
 }
 
-// ✅ Save altar servers + attendance records to Supabase
 async function saveAttendanceData({ altarServers, records }) {
   const userGroup = localStorage.getItem("login_group");
 
-  // ✅ Save servers
   if (records._servers?.length) {
     for (const s of records._servers) {
       if (s.group_name === userGroup) {
@@ -69,9 +64,8 @@ async function saveAttendanceData({ altarServers, records }) {
     }
   }
 
-  // ✅ Save attendance
   for (const d of Object.keys(records)) {
-    if (d === "_servers") continue; // skip helper key
+    if (d === "_servers") continue; 
     for (const server_id of Object.keys(records[d])) {
       const status = records[d][server_id];
       const server = altarServers.find((s) => s.id === server_id);
@@ -100,13 +94,11 @@ export default function AttendanceTracker() {
   const [filter, setFilter] = useState("all");
   const [loading, setLoading] = useState(true);
 
-  // ✅ Load login state
   useEffect(() => {
     const loggedIn = localStorage.getItem(LOGIN_KEY);
     if (loggedIn === "true") setIsLoggedIn(true);
   }, []);
 
-  // ✅ Load from Supabase once logged in
   useEffect(() => {
     if (!isLoggedIn) return;
 
@@ -121,12 +113,10 @@ export default function AttendanceTracker() {
           ? JSON.parse(raw)
           : { altarServers: [], records: {} };
 
-        // Merge servers
         const mergedServers = [...localData.altarServers, ...supaServers].filter(
           (v, i, a) => a.findIndex((t) => t.id === v.id) === i
         );
 
-        // Merge records
         const mergedRecords = { ...localData.records, ...supaRecords };
 
         setAltarServers(mergedServers);
@@ -141,7 +131,6 @@ export default function AttendanceTracker() {
     fetchData();
   }, [isLoggedIn]);
 
-  // ✅ Auto-save dirty changes
   useEffect(() => {
     if (!isLoggedIn || loading) return;
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ altarServers, records }));
@@ -160,7 +149,6 @@ export default function AttendanceTracker() {
     return () => clearTimeout(timeout);
   }, [records, altarServers, dirtyRecords, isLoggedIn, loading]);
 
-  // ✅ FIXED Login / Logout
   const handleLogin = (e) => {
     e.preventDefault();
     const { username, password } = loginInput;
@@ -174,7 +162,7 @@ export default function AttendanceTracker() {
       setIsLoggedIn(true);
       localStorage.setItem(LOGIN_KEY, "true");
       localStorage.setItem("login_user", user.username);
-      localStorage.setItem("login_group", user.group); // ✅ store group
+      localStorage.setItem("login_group", user.group); 
     } else {
       alert("Invalid username or password");
     }
@@ -187,7 +175,6 @@ export default function AttendanceTracker() {
     localStorage.removeItem("login_group");
   };
 
-  // ✅ Add / Remove altar servers
   const addAltarServer = (e) => {
     e?.preventDefault();
     const trimmed = nameInput.trim();
@@ -212,7 +199,6 @@ export default function AttendanceTracker() {
     setAltarServers(newList);
     setNameInput("");
 
-    // ✅ mark for sync
     setDirtyRecords((d) => ({
       ...d,
       _servers: [...(d._servers || []), newServer],
@@ -222,7 +208,6 @@ export default function AttendanceTracker() {
   const removeAltarServer = async (id) => {
     const userGroup = localStorage.getItem("login_group");
 
-    // 1️⃣ Delete attendance records linked to this server
     const { error: attendanceError } = await supabase
       .from("attendance_records")
       .delete()
@@ -232,7 +217,6 @@ export default function AttendanceTracker() {
       console.error("Error deleting attendance:", attendanceError);
     }
 
-    // 2️⃣ Delete the altar server itself (only if belongs to current group)
     const { error: serverError } = await supabase
       .from("altar_servers")
       .delete()
@@ -243,7 +227,6 @@ export default function AttendanceTracker() {
       console.error("Error deleting server:", serverError);
     }
 
-    // 3️⃣ Update local state so UI refreshes immediately
     setAltarServers((s) => s.filter((x) => x.id !== id));
     setRecords((r) => {
       const copy = { ...r };
@@ -267,7 +250,6 @@ export default function AttendanceTracker() {
   };
 
 
-  // ✅ Mark attendance
   const markAttendance = (serverId, status) => {
     setRecords((r) => {
       const updated = { ...r, [date]: { ...(r[date] || {}), [serverId]: status } };
