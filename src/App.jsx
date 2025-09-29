@@ -1,11 +1,16 @@
+// AttendanceTracker.jsx
 import React, { useEffect, useState } from "react";
 import logo from "./assets/logo.png";
-import { loadAttendanceData, saveAttendanceData } from "./syncWithSupabase";
+import { supabase } from "./syncWithSupabase"; // ✅ corrected import
 
 const LOGIN_KEY = "attendance_login_v1";
 const STORAGE_KEY = "attendance_tracker_v1";
 const USERS = [
-  { username: "srp_leaders", password: "srpMassLeaders" },
+  { username: "srp_5am", password: "srpLeader5AM", group: "5am" },
+  { username: "srp_8am", password: "srpLeader8AM", group: "8am" },
+  { username: "srp_10am", password: "srpLeader10AM", group: "10am" },
+  { username: "srp_4pm", password: "srpLeader4PM", group: "4pm" },
+  { username: "srp_6pm", password: "srpLeader6PM", group: "6pm" },
 ];
 
 function formatDateISO(d) {
@@ -13,6 +18,75 @@ function formatDateISO(d) {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+async function loadAttendanceData() {
+  const userGroup = localStorage.getItem("login_group");
+
+  // First get servers for this group
+  const { data: altarServers, error: serversError } = await supabase
+    .from("altar_servers")
+    .select("*")
+    .eq("group_name", userGroup);
+  if (serversError) {
+    console.error("Error loading servers:", serversError);
+    return { altarServers: [], records: {} };
+  }
+
+  let records = {};
+  if (altarServers?.length) {
+    const ids = altarServers.map((s) => s.id);
+
+    // ✅ Now fetch attendance ONLY for these server IDs
+    const { data: attendanceRows, error: recordsError } = await supabase
+      .from("attendance_records")
+      .select("*")
+      .in("server_id", ids);
+
+    if (recordsError) console.error("Error loading records:", recordsError);
+
+    (attendanceRows || []).forEach((row) => {
+      if (!records[row.date]) records[row.date] = {};
+      records[row.date][row.server_id] = row.status;
+    });
+  }
+
+  return { altarServers: altarServers || [], records };
+}
+
+// ✅ Save altar servers + attendance records to Supabase
+async function saveAttendanceData({ altarServers, records }) {
+  const userGroup = localStorage.getItem("login_group");
+
+  // ✅ Save servers
+  if (records._servers?.length) {
+    for (const s of records._servers) {
+      if (s.group_name === userGroup) {
+        const { error } = await supabase
+          .from("altar_servers")
+          .upsert([{ id: s.id, name: s.name, group_name: s.group_name }]);
+        if (error) console.error("Error saving server:", error);
+      }
+    }
+  }
+
+  // ✅ Save attendance
+  for (const d of Object.keys(records)) {
+    if (d === "_servers") continue; // skip helper key
+    for (const server_id of Object.keys(records[d])) {
+      const status = records[d][server_id];
+      const server = altarServers.find((s) => s.id === server_id);
+
+      if (server && server.group_name === userGroup) {
+        const { error } = await supabase
+          .from("attendance_records")
+          .upsert(
+            [{ server_id, date: d, status }],
+            { onConflict: ["date", "server_id"] }
+          );
+        if (error) console.error("Error saving attendance:", error);
+      }
+    }
+  }
 }
 
 export default function AttendanceTracker() {
@@ -26,13 +100,13 @@ export default function AttendanceTracker() {
   const [filter, setFilter] = useState("all");
   const [loading, setLoading] = useState(true);
 
-  // Load login state
+  // ✅ Load login state
   useEffect(() => {
     const loggedIn = localStorage.getItem(LOGIN_KEY);
     if (loggedIn === "true") setIsLoggedIn(true);
   }, []);
 
-  // Load data from Supabase on login
+  // ✅ Load from Supabase once logged in
   useEffect(() => {
     if (!isLoggedIn) return;
 
@@ -42,7 +116,6 @@ export default function AttendanceTracker() {
         const { altarServers: supaServers, records: supaRecords } =
           await loadAttendanceData();
 
-        // Merge with localStorage for faster UI
         const raw = localStorage.getItem(STORAGE_KEY);
         const localData = raw
           ? JSON.parse(raw)
@@ -68,10 +141,9 @@ export default function AttendanceTracker() {
     fetchData();
   }, [isLoggedIn]);
 
-  // Save dirty records to Supabase with debounce
+  // ✅ Auto-save dirty changes
   useEffect(() => {
     if (!isLoggedIn || loading) return;
-    // Always save to localStorage immediately
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ altarServers, records }));
 
     if (Object.keys(dirtyRecords).length === 0) return;
@@ -88,19 +160,23 @@ export default function AttendanceTracker() {
     return () => clearTimeout(timeout);
   }, [records, altarServers, dirtyRecords, isLoggedIn, loading]);
 
-  // Login / Logout
+  // ✅ FIXED Login / Logout
   const handleLogin = (e) => {
     e.preventDefault();
-    const found = USERS.find(
+    const { username, password } = loginInput;
+
+    const user = USERS.find(
       (u) =>
-        u.username === loginInput.username && u.password === loginInput.password
+        u.username === username.trim() && u.password === password.trim()
     );
-    if (found) {
+
+    if (user) {
       setIsLoggedIn(true);
       localStorage.setItem(LOGIN_KEY, "true");
-      localStorage.setItem("login_user", found.username);
+      localStorage.setItem("login_user", user.username);
+      localStorage.setItem("login_group", user.group); // ✅ store group
     } else {
-      alert("Invalid username or password!");
+      alert("Invalid username or password");
     }
   };
 
@@ -108,21 +184,21 @@ export default function AttendanceTracker() {
     setIsLoggedIn(false);
     localStorage.removeItem(LOGIN_KEY);
     localStorage.removeItem("login_user");
+    localStorage.removeItem("login_group");
   };
 
-  // Add / Remove altar servers
+  // ✅ Add / Remove altar servers
   const addAltarServer = (e) => {
     e?.preventDefault();
     const trimmed = nameInput.trim();
     if (!trimmed) return;
 
-    const currentUser = localStorage.getItem("login_user");
-    const userGroup = currentUser ? currentUser.split("_")[1] : "";
+    const userGroup = localStorage.getItem("login_group") || "";
 
     const duplicate = altarServers.some(
       (s) =>
         s.name.toLowerCase() === trimmed.toLowerCase() &&
-        s.group === userGroup
+        s.group_name === userGroup
     );
     if (duplicate) {
       alert("This altar server is already recorded!");
@@ -130,10 +206,17 @@ export default function AttendanceTracker() {
     }
 
     const id = Date.now().toString();
-    const newList = [...altarServers, { id, name: trimmed, group: userGroup }];
+    const newServer = { id, name: trimmed, group_name: userGroup };
+    const newList = [...altarServers, newServer];
     newList.sort((a, b) => a.name.localeCompare(b.name));
     setAltarServers(newList);
     setNameInput("");
+
+    // ✅ mark for sync
+    setDirtyRecords((d) => ({
+      ...d,
+      _servers: [...(d._servers || []), newServer],
+    }));
   };
 
   const removeAltarServer = (id) => {
@@ -147,7 +230,6 @@ export default function AttendanceTracker() {
           copy[d] = rec;
         }
       }
-      // Also remove from dirty
       setDirtyRecords((d) => {
         const copyDirty = { ...d };
         for (const dd of Object.keys(copyDirty)) {
@@ -159,7 +241,7 @@ export default function AttendanceTracker() {
     });
   };
 
-  // Mark attendance
+  // ✅ Mark attendance
   const markAttendance = (serverId, status) => {
     setRecords((r) => {
       const updated = { ...r, [date]: { ...(r[date] || {}), [serverId]: status } };
@@ -172,9 +254,8 @@ export default function AttendanceTracker() {
   };
 
   const markAll = (status) => {
-    const currentUser = localStorage.getItem("login_user");
-    const userGroup = currentUser ? currentUser.split("_")[1] : "";
-    const groupServers = altarServers.filter((s) => s.group === userGroup);
+    const userGroup = localStorage.getItem("login_group") || "";
+    const groupServers = altarServers.filter((s) => s.group_name === userGroup);
 
     setRecords((r) => {
       const row = {};
@@ -207,14 +288,15 @@ export default function AttendanceTracker() {
       if (val === "present") present++;
       if (val === "absent") absent++;
       if (val === "late") late++;
-      if (val === "present" || val === "absent" || val === "late") total++;
+      if (val) total++;
     }
     return { present, absent, late, total };
   };
 
-  const currentUser = localStorage.getItem("login_user");
-  const userGroup = currentUser ? currentUser.split("_")[1] : "";
-  const groupFilteredServers = altarServers.filter((s) => s.group === userGroup);
+  const userGroup = localStorage.getItem("login_group") || "";
+  const groupFilteredServers = altarServers.filter(
+    (s) => s.group_name === userGroup
+  );
   const filteredAltarServers = groupFilteredServers.filter((s) => {
     if (filter === "all") return true;
     const val = records[date] && records[date][s.id];
@@ -279,7 +361,6 @@ export default function AttendanceTracker() {
         Loading...
       </div>
     );
-
 
   return (
     <div className="flex justify-center items-center">
@@ -390,69 +471,38 @@ export default function AttendanceTracker() {
                         <td className="py-2 px-1">
                           <div className="inline-flex gap-2">
                             <button
-                              className={`px-2 py-1 rounded border hover:bg-green-100 cursor-pointer ${
-                                val === "present" ? "bg-green-100" : ""
-                              }`}
-                              onClick={() =>
-                                setRecords((r) => ({
-                                  ...r,
-                                  [date]: {
-                                    ...(r[date] || {}),
-                                    [s.id]: "present",
-                                  },
-                                }))
-                              }
+                              className={`px-2 py-1 rounded border hover:bg-green-100 cursor-pointer ${val === "present" ? "bg-green-100" : ""
+                                }`}
+                              onClick={() => markAttendance(s.id, "present")}
                             >
                               Present
                             </button>
                             <button
-                              className={`px-2 py-1 rounded border hover:bg-red-100 cursor-pointer ${
-                                val === "absent" ? "bg-red-100" : ""
-                              }`}
-                              onClick={() =>
-                                setRecords((r) => ({
-                                  ...r,
-                                  [date]: {
-                                    ...(r[date] || {}),
-                                    [s.id]: "absent",
-                                  },
-                                }))
-                              }
+                              className={`px-2 py-1 rounded border hover:bg-red-100 cursor-pointer ${val === "absent" ? "bg-red-100" : ""
+                                }`}
+                              onClick={() => markAttendance(s.id, "absent")}
                             >
                               Absent
                             </button>
                             <button
-                              className={`px-2 py-1 rounded border hover:bg-yellow-100 cursor-pointer ${
-                                val === "late" ? "bg-yellow-100" : ""
-                              }`}
-                              onClick={() =>
-                                setRecords((r) => ({
-                                  ...r,
-                                  [date]: {
-                                    ...(r[date] || {}),
-                                    [s.id]: "late",
-                                  },
-                                }))
-                              }
+                              className={`px-2 py-1 rounded border hover:bg-yellow-100 cursor-pointer ${val === "late" ? "bg-yellow-100" : ""
+                                }`}
+                              onClick={() => markAttendance(s.id, "late")}
                             >
                               Late
                             </button>
                           </div>
                         </td>
-                        <td className="py-2 pl-2">
+                        <td className="py-2 px-2 text-sm text-gray-500">
                           {(() => {
-                            const sum = attendanceSummaryForAltarServer(s.id);
-                            return (
-                              <div className="text-sm text-gray-700">
-                                {sum.present} Present • {sum.absent} Absent •{" "}
-                                {sum.late} Late • {sum.total} Recorded
-                              </div>
-                            );
+                            const ssum =
+                              attendanceSummaryForAltarServer(s.id);
+                            return `P: ${ssum.present}, A: ${ssum.absent}, L: ${ssum.late}, Total: ${ssum.total}`;
                           })()}
                         </td>
                         <td className="py-2 px-2">
                           <button
-                            className="px-2 py-1 rounded border text-sm cursor-pointer bg-[#42aaff] text-white hover:bg-blue-600"
+                            className="px-2 py-1 rounded bg-red-500 text-white cursor-pointer hover:bg-red-700"
                             onClick={() => removeAltarServer(s.id)}
                           >
                             Remove
@@ -461,13 +511,10 @@ export default function AttendanceTracker() {
                       </tr>
                     );
                   })}
-                  {altarServers.length === 0 && (
+                  {filteredAltarServers.length === 0 && (
                     <tr>
-                      <td
-                        colSpan={4}
-                        className="py-4 text-center text-gray-500"
-                      >
-                        No Altar Servers yet. Add one above.
+                      <td colSpan="4" className="py-4 text-center text-gray-500">
+                        No altar servers found.
                       </td>
                     </tr>
                   )}
@@ -476,10 +523,6 @@ export default function AttendanceTracker() {
             </div>
           </div>
         </section>
-
-        <footer className="text-sm text-white mt-6">
-          SAN ROQUE PARISH ALTAR SERVERS ATTENDANCE
-        </footer>
       </div>
     </div>
   );
