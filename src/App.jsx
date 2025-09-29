@@ -219,7 +219,31 @@ export default function AttendanceTracker() {
     }));
   };
 
-  const removeAltarServer = (id) => {
+  const removeAltarServer = async (id) => {
+    const userGroup = localStorage.getItem("login_group");
+
+    // 1️⃣ Delete attendance records linked to this server
+    const { error: attendanceError } = await supabase
+      .from("attendance_records")
+      .delete()
+      .eq("server_id", id);
+
+    if (attendanceError) {
+      console.error("Error deleting attendance:", attendanceError);
+    }
+
+    // 2️⃣ Delete the altar server itself (only if belongs to current group)
+    const { error: serverError } = await supabase
+      .from("altar_servers")
+      .delete()
+      .eq("id", id)
+      .eq("group_name", userGroup);
+
+    if (serverError) {
+      console.error("Error deleting server:", serverError);
+    }
+
+    // 3️⃣ Update local state so UI refreshes immediately
     setAltarServers((s) => s.filter((x) => x.id !== id));
     setRecords((r) => {
       const copy = { ...r };
@@ -230,16 +254,18 @@ export default function AttendanceTracker() {
           copy[d] = rec;
         }
       }
-      setDirtyRecords((d) => {
-        const copyDirty = { ...d };
-        for (const dd of Object.keys(copyDirty)) {
-          if (copyDirty[dd][id]) delete copyDirty[dd][id];
-        }
-        return copyDirty;
-      });
       return copy;
     });
+
+    setDirtyRecords((d) => {
+      const copyDirty = { ...d };
+      for (const dd of Object.keys(copyDirty)) {
+        if (copyDirty[dd][id]) delete copyDirty[dd][id];
+      }
+      return copyDirty;
+    });
   };
+
 
   // ✅ Mark attendance
   const markAttendance = (serverId, status) => {
@@ -393,14 +419,6 @@ export default function AttendanceTracker() {
               Add
             </button>
           </form>
-          <div className="mt-4 flex gap-2 flex-wrap">
-            <button
-              className="px-3 py-1 rounded border cursor-pointer bg-[#42aaff] text-white hover:bg-blue-700"
-              onClick={() => setAltarServers([])}
-            >
-              Remove all
-            </button>
-          </div>
         </section>
 
         {/* Attendance Table */}
@@ -502,7 +520,7 @@ export default function AttendanceTracker() {
                         </td>
                         <td className="py-2 px-2">
                           <button
-                            className="px-2 py-1 rounded bg-red-500 text-white cursor-pointer hover:bg-red-700"
+                            className="px-2 py-1 rounded bg-blue-700 text-white cursor-pointer hover:bg-blue-500"
                             onClick={() => removeAltarServer(s.id)}
                           >
                             Remove
